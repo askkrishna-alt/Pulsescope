@@ -317,8 +317,15 @@
     }
 
     // HR range/average derived from corrected intervals (missed-beat gaps already
-    // split), not the live rolling window — so one artifact can't drag these down.
-    const bpmSeries = correctedIntervals.map(iv => 60000/iv);
+    // split, pauses already excluded) — plus a plausibility clamp as a last
+    // safety net against any remaining artifact.
+    const bpmSeries = correctedIntervals
+      .map(iv => 60000/iv)
+      .filter(bpm => bpm >= PLAUSIBLE_MIN_BPM && bpm <= PLAUSIBLE_MAX_BPM);
+    if (bpmSeries.length < 3){
+      summaryBody.innerHTML = '<p>Still gathering enough clean beats for a reliable summary.</p>';
+      return;
+    }
     const avgHr = Math.round(bpmSeries.reduce((a,b)=>a+b,0)/bpmSeries.length);
     const minHr = Math.round(Math.min(...bpmSeries)), maxHr = Math.round(Math.max(...bpmSeries));
 
@@ -343,7 +350,10 @@
 
     if (missedBeatCount > 0){
       const pctFlagged = Math.round((missedBeatCount/rawIntervalCount)*100);
-      html += `<p>${missedBeatCount} of ${rawIntervalCount} beat-to-beat gaps this session (${pctFlagged}%) were noticeably longer than the surrounding rhythm and flagged as likely single missed-beat events. These are accounted for above rather than hidden. Occasional missed beats like this are common and often not a sign of anything wrong — but a pattern worth being aware of over time, especially since you've noted seeing similar findings on prior ECG/echo.</p>`;
+      html += `<p>${missedBeatCount} of ${rawIntervalCount} beat-to-beat gaps this session (${pctFlagged}%) were noticeably longer than the surrounding rhythm and flagged as likely missed-beat events. These are accounted for above rather than hidden. Occasional missed beats like this are common and often not a sign of anything wrong — if you notice this pattern recurring across sessions where you're holding still, it's worth mentioning to a doctor.</p>`;
+    }
+    if (pauseCount > 0){
+      html += `<p style="color:var(--text-dim)">${pauseCount} longer gap${pauseCount>1?'s':''} this session looked like a brief interruption in contact (e.g. repositioning your finger) rather than a real heartbeat gap, so ${pauseCount>1?'they were':'it was'} excluded from these stats entirely.</p>`;
     }
 
     if (baseline && beatTemplate){
@@ -461,7 +471,7 @@
       baselineHrDeltaVal.textContent = '—';
       sessionStartTs = performance.now();
       hrHistory = []; beatCorrHistory = []; intervalHistory = [];
-      correctedIntervals = []; missedBeatCount = 0; rawIntervalCount = 0;
+      correctedIntervals = []; missedBeatCount = 0; pauseCount = 0; rawIntervalCount = 0;
       summaryShown = false;
       summaryPanel.style.display = 'none';
       summaryBody.innerHTML = '';
@@ -610,14 +620,23 @@
     }
   }
 
-  // Records a beat-to-beat interval for session-long statistics. If a gap looks
-  // like ~2x the surrounding rhythm, that's very likely one missed beat DETECTION
-  // (motion/contact dropout merging two real beats into one apparent long gap),
-  // not necessarily a missed heartbeat. We split it into two estimated half
-  // intervals so a single artifact can't corrupt the regularity/HR stats — but
-  // we ALWAYS count and keep the raw event, so nothing is silently hidden.
+  // Records a beat-to-beat interval for session-long statistics.
+  // Three cases, based on how the gap compares to the surrounding rhythm:
+  //  1. Normal — used as-is.
+  //  2. ~2-5x the local rhythm — very likely a handful of missed beat
+  //     DETECTIONS (motion/contact dropout), not a real physiological gap.
+  //     Split evenly into that many estimated sub-beats so the true rhythm
+  //     is reconstructed, and count every missed beat explicitly.
+  //  6x+ or >5s outright — this is no longer "a missed beat," it's almost
+  //     certainly you repositioning your finger or briefly stopping. Treating
+  //     that as a slow heartbeat would be actively misleading, so it's
+  //     excluded from the stats entirely and counted separately as a pause.
   let missedBeatCount = 0;
+  let pauseCount = 0;
   let rawIntervalCount = 0;
+  const PAUSE_MS = 5000;
+  const PAUSE_RATIO = 6;
+  const PLAUSIBLE_MIN_BPM = 30, PLAUSIBLE_MAX_BPM = 200;
 
   function recordInterval(interval){
     rawIntervalCount++;
@@ -627,11 +646,24 @@
     if (recent.length >= 3) {
       const sorted = [...recent].sort((a,b)=>a-b);
       const localMedian = sorted[Math.floor(sorted.length/2)];
-      if (localMedian > 0 && interval > localMedian * 1.6) {
-        // flag as a probable single missed-beat gap — split for stats, but count it
-        missedBeatCount++;
-        correctedIntervals.push(interval/2, interval/2);
-        return;
+
+      if (localMedian > 0) {
+        const ratio = interval / localMedian;
+
+        // Case: pause — too long or too many multiples to plausibly be missed
+        // heartbeats; almost certainly a contact interruption. Exclude entirely.
+        if (interval > PAUSE_MS || ratio > PAUSE_RATIO) {
+          pauseCount++;
+          return;
+        }
+
+        // Case: likely N missed beat detections — reconstruct the true rhythm
+        if (ratio > 1.6) {
+          const n = Math.max(2, Math.round(ratio));
+          missedBeatCount += (n - 1);
+          for (let k=0;k<n;k++) correctedIntervals.push(interval/n);
+          return;
+        }
       }
     }
     correctedIntervals.push(interval);
