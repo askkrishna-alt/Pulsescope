@@ -302,6 +302,7 @@
   let hrHistory = [];
   let beatCorrHistory = [];
   let intervalHistory = [];
+  let correctedIntervals = [];
   let summaryShown = false;
 
   function generateSummary(final){
@@ -310,18 +311,25 @@
     summaryDuration.textContent = durSec + 's' + (final ? ' (final)' : ' (live)');
     summaryLabel.textContent = final ? 'Session summary' : 'Session summary — building';
 
-    if (hrHistory.length < 3 || intervalHistory.length < 3){
+    if (correctedIntervals.length < 3){
       summaryBody.innerHTML = '<p>Still gathering enough beats for a reliable summary.</p>';
       return;
     }
 
-    const avgHr = Math.round(hrHistory.reduce((a,b)=>a+b,0)/hrHistory.length);
-    const minHr = Math.min(...hrHistory), maxHr = Math.max(...hrHistory);
+    // HR range/average derived from corrected intervals (missed-beat gaps already
+    // split), not the live rolling window — so one artifact can't drag these down.
+    const bpmSeries = correctedIntervals.map(iv => 60000/iv);
+    const avgHr = Math.round(bpmSeries.reduce((a,b)=>a+b,0)/bpmSeries.length);
+    const minHr = Math.round(Math.min(...bpmSeries)), maxHr = Math.round(Math.max(...bpmSeries));
 
-    const meanIv = intervalHistory.reduce((a,b)=>a+b,0)/intervalHistory.length;
-    const varIv = intervalHistory.reduce((a,b)=>a+(b-meanIv)*(b-meanIv),0)/intervalHistory.length;
-    const cvIv = Math.sqrt(varIv)/meanIv;
-    const regPct = Math.max(0, Math.min(100, Math.round((1 - cvIv/0.25)*100)));
+    // Robust regularity score: median + MAD instead of mean + std, so it isn't
+    // dominated by any single remaining outlier beat.
+    const sorted = [...correctedIntervals].sort((a,b)=>a-b);
+    const medianIv = sorted[Math.floor(sorted.length/2)];
+    const absDevs = correctedIntervals.map(v => Math.abs(v - medianIv)).sort((a,b)=>a-b);
+    const mad = absDevs[Math.floor(absDevs.length/2)];
+    const robustCv = (mad * 1.4826) / medianIv; // 1.4826 scales MAD to be comparable to std for typical spread
+    const regPct = Math.max(0, Math.min(100, Math.round((1 - robustCv/0.25)*100)));
     const regLabel = regPct>=88 ? 'very consistent' : regPct>=65 ? 'reasonably consistent' : 'notably variable';
 
     const avgCorr = beatCorrHistory.length ? beatCorrHistory.reduce((a,b)=>a+b,0)/beatCorrHistory.length : null;
@@ -332,6 +340,11 @@
     html += `<p><b>${durSec}s session</b> — heart rate averaged <b>${avgHr} bpm</b> (range ${minHr}–${maxHr}).</p>`;
     html += `<p>Beat-to-beat timing was <b>${regLabel}</b> (${regPct}% regularity score).</p>`;
     if (shapeLabel) html += `<p>Beat-to-beat shape was <b>${shapeLabel}</b> (${shapePct}% average match).</p>`;
+
+    if (missedBeatCount > 0){
+      const pctFlagged = Math.round((missedBeatCount/rawIntervalCount)*100);
+      html += `<p>${missedBeatCount} of ${rawIntervalCount} beat-to-beat gaps this session (${pctFlagged}%) were noticeably longer than the surrounding rhythm and flagged as likely single missed-beat events. These are accounted for above rather than hidden. Occasional missed beats like this are common and often not a sign of anything wrong — but a pattern worth being aware of over time, especially since you've noted seeing similar findings on prior ECG/echo.</p>`;
+    }
 
     if (baseline && beatTemplate){
       const corrB = pearsonCorr(beatTemplate, baseline.template);
@@ -448,6 +461,7 @@
       baselineHrDeltaVal.textContent = '—';
       sessionStartTs = performance.now();
       hrHistory = []; beatCorrHistory = []; intervalHistory = [];
+      correctedIntervals = []; missedBeatCount = 0; rawIntervalCount = 0;
       summaryShown = false;
       summaryPanel.style.display = 'none';
       summaryBody.innerHTML = '';
@@ -589,11 +603,38 @@
       peaks.push(now);
       if (peaks.length > 12) peaks.shift();
       if (prevPeakTime !== null) {
-        intervalHistory.push(now - prevPeakTime);
+        recordInterval(now - prevPeakTime);
         segmentBeat(prevPeakTime, now);
       }
       updateMetrics();
     }
+  }
+
+  // Records a beat-to-beat interval for session-long statistics. If a gap looks
+  // like ~2x the surrounding rhythm, that's very likely one missed beat DETECTION
+  // (motion/contact dropout merging two real beats into one apparent long gap),
+  // not necessarily a missed heartbeat. We split it into two estimated half
+  // intervals so a single artifact can't corrupt the regularity/HR stats — but
+  // we ALWAYS count and keep the raw event, so nothing is silently hidden.
+  let missedBeatCount = 0;
+  let rawIntervalCount = 0;
+
+  function recordInterval(interval){
+    rawIntervalCount++;
+    intervalHistory.push(interval); // raw, unmodified — kept for transparency
+
+    const recent = intervalHistory.slice(-9, -1); // up to 8 prior raw intervals, excluding this one
+    if (recent.length >= 3) {
+      const sorted = [...recent].sort((a,b)=>a-b);
+      const localMedian = sorted[Math.floor(sorted.length/2)];
+      if (localMedian > 0 && interval > localMedian * 1.6) {
+        // flag as a probable single missed-beat gap — split for stats, but count it
+        missedBeatCount++;
+        correctedIntervals.push(interval/2, interval/2);
+        return;
+      }
+    }
+    correctedIntervals.push(interval);
   }
 
   function segmentBeat(tStart, tEnd){
@@ -735,7 +776,7 @@
 
     if (sessionStartTs){
       const elapsed = performance.now() - sessionStartTs;
-      if (!summaryShown && elapsed >= 60000 && hrHistory.length >= 5){
+      if (!summaryShown && elapsed >= 60000 && correctedIntervals.length >= 5){
         summaryShown = true;
         summaryPanel.style.display = 'block';
       }
