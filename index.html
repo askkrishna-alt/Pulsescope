@@ -606,10 +606,18 @@
 
     sinceLastPeak = peaks.length ? now - peaks[peaks.length-1] : 9999;
 
-    const recentWindow = filtered.slice(-Math.min(filtered.length, 60));
+    // Window shortened from ~4.2s to ~3.2s, and the bar lowered from the top
+    // 50% to the top 35% of that local range. PPG amplitude naturally dips
+    // every few beats due to breathing (respiratory-induced amplitude
+    // modulation) — a genuinely real beat can be smaller than its recent
+    // neighbors for that reason alone. The old strict threshold was causing
+    // real beats to fail detection here, which then looked like "missed
+    // beats" downstream in the interval statistics — the actual fix belongs
+    // at the source, not in the stats layer.
+    const recentWindow = filtered.slice(-Math.min(filtered.length, 45));
     const localRange = Math.max(...recentWindow) - Math.min(...recentWindow) || 0.001;
     const prominence = ac - Math.min(...recentWindow);
-    const isProminent = prominence > localRange * 0.5; // peak must sit in top half of recent swing
+    const isProminent = prominence > localRange * 0.35;
 
     if (wasRising && !rising && sinceLastPeak > 320 && isProminent) {
       const prevPeakTime = peaks.length ? peaks[peaks.length-1] : null;
