@@ -153,7 +153,7 @@
     </div>
     <div class="metric">
       <div class="val small" id="sqiVal">—</div>
-      <div class="lbl">Rhythm regularity</div>
+      <div class="lbl">Rhythm regularity <span style="opacity:0.65; font-size:0.85em;">(beat timing variability)</span></div>
     </div>
     <div class="metric">
       <div class="val small" id="shapeVal">—</div>
@@ -329,7 +329,7 @@
     const avgHr = Math.round(bpmSeries.reduce((a,b)=>a+b,0)/bpmSeries.length);
     const minHr = Math.round(Math.min(...bpmSeries)), maxHr = Math.round(Math.max(...bpmSeries));
 
-    // Robust regularity score: median + MAD instead of mean + std, so it isn't
+    // Robust variability score: median + MAD instead of mean + std, so it isn't
     // dominated by any single remaining outlier beat.
     const sorted = [...correctedIntervals].sort((a,b)=>a-b);
     const medianIv = sorted[Math.floor(sorted.length/2)];
@@ -337,19 +337,31 @@
     const mad = absDevs[Math.floor(absDevs.length/2)];
     const robustCv = (mad * 1.4826) / medianIv; // 1.4826 scales MAD to be comparable to std for typical spread
     const regPct = Math.max(0, Math.min(100, Math.round((1 - robustCv/0.25)*100)));
-    const regLabel = regPct>=88 ? 'very consistent' : regPct>=65 ? 'reasonably consistent' : 'notably variable';
+    // NOTE: intentionally neutral language — this is NOT a quality judgment.
+    // Beat-to-beat timing naturally varies with breathing (a normal, often
+    // favorable sign), and our ~14Hz sampling rate adds its own timing
+    // "jitter" independent of anything physiological. Once missed-beats/
+    // pauses/double-detections are accounted for (reported below), whatever
+    // variability remains is much more likely to be one of these two benign
+    // sources than a data problem — so this is described, not graded.
+    const regLabel = regPct>=88 ? 'very steady' : regPct>=65 ? 'some natural variation' : 'noticeably variable';
 
     const avgCorr = beatCorrHistory.length ? beatCorrHistory.reduce((a,b)=>a+b,0)/beatCorrHistory.length : null;
     const shapePct = avgCorr!==null ? Math.round(avgCorr*100) : null;
     const shapeLabel = shapePct===null ? null : (shapePct>=88 ? 'very consistent' : shapePct>=65 ? 'reasonably consistent' : 'notably variable');
 
+    const pctFlagged = rawIntervalCount>0 ? Math.round((missedBeatCount/rawIntervalCount)*100) : 0;
+
     let html = '';
     html += `<p><b>${durSec}s session</b> — heart rate averaged <b>${avgHr} bpm</b> (range ${minHr}–${maxHr}).</p>`;
-    html += `<p>Beat-to-beat timing was <b>${regLabel}</b> (${regPct}% regularity score).</p>`;
+    html += `<p>Rhythm regularity (beat timing variability) showed <b>${regLabel}</b> (${regPct}% steadiness score).</p>`;
     if (shapeLabel) html += `<p>Beat-to-beat shape was <b>${shapeLabel}</b> (${shapePct}% average match).</p>`;
 
+    if (regPct < 65 && pctFlagged < 8){
+      html += `<p style="color:var(--text-dim)">Only ${pctFlagged}% of gaps this session were flagged as likely missed-beat events, so most of the timing variation above is probably <b>not</b> a data-quality issue — it's more likely natural heart-rate variability (which shifts with breathing and is often a healthy sign) combined with some inherent timing "noise" from this sensor's sampling rate.</p>`;
+    }
+
     if (missedBeatCount > 0){
-      const pctFlagged = Math.round((missedBeatCount/rawIntervalCount)*100);
       html += `<p>${missedBeatCount} of ${rawIntervalCount} beat-to-beat gaps this session (${pctFlagged}%) were noticeably longer than the surrounding rhythm and flagged as likely missed-beat events. These are accounted for above rather than hidden. Occasional missed beats like this are common and often not a sign of anything wrong — if you notice this pattern recurring across sessions where you're holding still, it's worth mentioning to a doctor.</p>`;
     }
     if (pauseCount > 0){
@@ -368,8 +380,8 @@
       html += `<p>No saved baseline yet — save one after a good session to enable comparisons over time.</p>`;
     }
 
-    if (regPct < 65 || (shapePct!==null && shapePct < 65)){
-      html += `<p style="color:var(--amber)">Lower consistency this session is most often caused by finger movement or contact pressure changes, not a real change in your heart. If this keeps showing up across sessions where you're holding still, it may be worth mentioning to a doctor.</p>`;
+    if (shapePct!==null && shapePct < 65){
+      html += `<p style="color:var(--amber)">Lower beat-shape consistency this session is most often caused by finger movement or contact pressure changes, not a real change in your heart. If this keeps showing up across sessions where you're holding still, it may be worth mentioning to a doctor.</p>`;
     }
 
     html += `<p style="color:var(--text-dim); font-size:12px; margin-top:6px;">This is a descriptive summary comparing this session to your own recent history — not a medical assessment, and not a judgment of "normal" or "abnormal."</p>`;
@@ -841,15 +853,18 @@
       if (summaryShown) generateSummary(false);
     }
 
-    // crude signal quality: coefficient of variation of recent intervals
+    // Beat-to-beat interval variability. NOTE: this is NOT purely a data-quality
+    // signal — genuine heart-rate variability (beat timing shifting slightly
+    // with breathing) is normal and often a favorable sign, not a problem.
+    // Framed neutrally rather than good/bad — no red/alarming color here.
     const mean = meanIbi;
     const variance = recent.reduce((a,b)=>a+(b-mean)*(b-mean),0)/recent.length;
     const cv = Math.sqrt(variance)/mean;
-    let sqi = 'poor';
-    if (cv < 0.06) sqi = 'good';
-    else if (cv < 0.14) sqi = 'fair';
+    let sqi = 'variable';
+    if (cv < 0.06) sqi = 'steady';
+    else if (cv < 0.14) sqi = 'some variation';
     sqiVal.textContent = sqi;
-    sqiVal.style.color = sqi==='good' ? '#6fffb0' : sqi==='fair' ? '#ffb454' : '#ff6b6b';
+    sqiVal.style.color = sqi==='steady' ? '#6fffb0' : '#ffb454';
   }
 
   function draw(){
