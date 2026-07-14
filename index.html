@@ -355,6 +355,9 @@
     if (pauseCount > 0){
       html += `<p style="color:var(--text-dim)">${pauseCount} longer gap${pauseCount>1?'s':''} this session looked like a brief interruption in contact (e.g. repositioning your finger) rather than a real heartbeat gap, so ${pauseCount>1?'they were':'it was'} excluded from these stats entirely.</p>`;
     }
+    if (doubleDetectionCount > 0){
+      html += `<p style="color:var(--text-dim)">${doubleDetectionCount} beat${doubleDetectionCount>1?'s were':' was'} detected implausibly close together (likely one heartbeat briefly triggering two detections) and ${doubleDetectionCount>1?'were':'was'} merged rather than counted as extra beats.</p>`;
+    }
 
     if (baseline && beatTemplate){
       const corrB = pearsonCorr(beatTemplate, baseline.template);
@@ -471,7 +474,7 @@
       baselineHrDeltaVal.textContent = '—';
       sessionStartTs = performance.now();
       hrHistory = []; beatCorrHistory = []; intervalHistory = [];
-      correctedIntervals = []; missedBeatCount = 0; pauseCount = 0; rawIntervalCount = 0;
+      correctedIntervals = []; missedBeatCount = 0; pauseCount = 0; doubleDetectionCount = 0; rawIntervalCount = 0;
       summaryShown = false;
       summaryPanel.style.display = 'none';
       summaryBody.innerHTML = '';
@@ -621,7 +624,7 @@
   }
 
   // Records a beat-to-beat interval for session-long statistics.
-  // Three cases, based on how the gap compares to the surrounding rhythm:
+  // Four cases, based on how the gap compares to the surrounding rhythm:
   //  1. Normal — used as-is.
   //  2. ~2-5x the local rhythm — very likely a handful of missed beat
   //     DETECTIONS (motion/contact dropout), not a real physiological gap.
@@ -631,18 +634,33 @@
   //     certainly you repositioning your finger or briefly stopping. Treating
   //     that as a slow heartbeat would be actively misleading, so it's
   //     excluded from the stats entirely and counted separately as a pause.
+  //  Implausibly SHORT (<400ms, >150bpm) — very likely one heartbeat getting
+  //     detected twice (a noise ripple crossing the peak threshold), not two
+  //     real beats. Dropped, and counted separately as a double-detection.
+  //
+  // Important: the "local rhythm" used to judge all of this is computed from
+  // already-cleaned (corrected) intervals, not raw ones — so a single bad
+  // interval can't drag the yardstick off and cause a cascade of false
+  // positives on the genuinely normal beats that follow it.
   let missedBeatCount = 0;
   let pauseCount = 0;
+  let doubleDetectionCount = 0;
   let rawIntervalCount = 0;
   const PAUSE_MS = 5000;
   const PAUSE_RATIO = 6;
+  const MIN_PLAUSIBLE_MS = 400; // >150bpm — treat as probable double-detection
   const PLAUSIBLE_MIN_BPM = 30, PLAUSIBLE_MAX_BPM = 200;
 
   function recordInterval(interval){
     rawIntervalCount++;
     intervalHistory.push(interval); // raw, unmodified — kept for transparency
 
-    const recent = intervalHistory.slice(-9, -1); // up to 8 prior raw intervals, excluding this one
+    if (interval < MIN_PLAUSIBLE_MS) {
+      doubleDetectionCount++;
+      return; // don't let this pollute the corrected series or the median at all
+    }
+
+    const recent = correctedIntervals.slice(-8); // last 8 already-cleaned intervals
     if (recent.length >= 3) {
       const sorted = [...recent].sort((a,b)=>a-b);
       const localMedian = sorted[Math.floor(sorted.length/2)];
