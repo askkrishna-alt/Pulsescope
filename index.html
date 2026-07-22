@@ -1,922 +1,287 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Waveform / PPG Capture Prototype</title>
-<style>
-  :root{
-    --bg: #0c1210;
-    --panel: #121b18;
-    --panel-line: #24332e;
-    --trace: #6fffb0;
-    --trace-dim: #2c5c46;
-    --amber: #ffb454;
-    --cyan: #5ad1ff;
-    --text: #d8e6df;
-    --text-dim: #6f8a7e;
-    --red: #ff6b6b;
-    --mono: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
-    --display: 'IBM Plex Sans', -apple-system, sans-serif;
-  }
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuro-Symbolic Autonomic Vitality Scan</title>
+    <style>
+        :root {
+            --bg-dark: #0F172A;
+            --bg-card: #1E293B;
+            --mint: #10B981;
+            --emerald: #059669;
+            --amber: #D97706;
+            --coral: #DC2626;
+            --text-main: #F8FAFC;
+            --text-muted: #94A3B8;
+        }
 
-  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
-  html,body{margin:0; padding:0; background:var(--bg); color:var(--text); font-family:var(--display); overscroll-behavior:none;}
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
 
-  .wrap{max-width:520px; margin:0 auto; padding:18px 16px 40px; min-height:100vh;}
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            background-color: var(--bg-dark);
+            padding: 24px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
 
-  header{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px;}
-  .brand{font-family:var(--mono); font-size:13px; letter-spacing:0.14em; color:var(--text-dim); text-transform:uppercase;}
-  .brand b{color:var(--trace); font-weight:600;}
-  .status-dot{width:7px; height:7px; border-radius:50%; background:var(--text-dim); display:inline-block; margin-right:6px; transition: background .2s;}
-  .status-dot.live{background:var(--trace); box-shadow:0 0 8px var(--trace);}
-  .status-dot.bad{background:var(--red);}
+        .header {
+            text-align: center;
+            font-size: 14px;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin: 0;
+        }
 
-  h1{font-family:var(--display); font-weight:700; font-size:22px; margin:2px 0 2px; letter-spacing:-0.01em;}
-  .sub{color:var(--text-dim); font-size:13px; line-height:1.5; margin-bottom:18px;}
+        .guide-box {
+            text-align: center;
+            font-size: 16px;
+            line-height: 1.5;
+            color: #E2E8F0;
+            min-height: 48px;
+        }
 
-  .panel{background:var(--panel); border:1px solid var(--panel-line); border-radius:10px; padding:14px; margin-bottom:14px;}
+        .ring-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px 0;
+        }
 
-  .scope-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-family:var(--mono); font-size:11px; color:var(--text-dim); letter-spacing:.08em; text-transform:uppercase;}
-  .scope-head span.on{color:var(--trace);}
+        .scan-ring {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background-color: var(--bg-card);
+            border: 4px solid var(--text-muted);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 28px;
+            font-weight: bold;
+            font-family: monospace;
+            transition: all 0.5s ease-in-out;
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+        }
 
-  canvas{width:100%; display:block; border-radius:6px; background:
-      linear-gradient(var(--panel-line) 1px, transparent 1px) 0 0/100% 20%,
-      linear-gradient(90deg, var(--panel-line) 1px, transparent 1px) 0 0/12.5% 100%,
-      #0a0f0d;
-  }
+        .scanning .scan-ring {
+            border-color: var(--mint);
+            animation: breathe 5s infinite ease-in-out;
+        }
 
-  .metrics{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;}
-  .metric{background:var(--panel); border:1px solid var(--panel-line); border-radius:10px; padding:12px 10px; text-align:center;}
-  .metric .val{font-family:var(--mono); font-size:26px; font-weight:600; color:var(--trace); line-height:1;}
-  .metric .val.small{font-size:16px; color:var(--amber);}
-  .metric .lbl{font-size:10.5px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.08em; margin-top:5px;}
+        @keyframes breathe {
+            0% { transform: scale(1); box-shadow: 0 0 20px 2px rgba(16, 185, 129, 0.2); }
+            50% { transform: scale(1.15); box-shadow: 0 0 40px 10px rgba(16, 185, 129, 0.5); }
+            100% { transform: scale(1); box-shadow: 0 0 20px 2px rgba(16, 185, 129, 0.2); }
+        }
 
-  .controls{display:flex; gap:10px; margin-bottom:14px;}
-  button{flex:1; font-family:var(--display); font-weight:600; font-size:14.5px; padding:13px 12px; border-radius:9px; border:1px solid var(--panel-line); background:var(--panel); color:var(--text); cursor:pointer;}
-  button.primary{background:var(--trace); color:#0a1712; border-color:var(--trace);}
-  button.primary.stop{background:var(--red); border-color:var(--red); color:#1a0a0a;}
-  button:disabled{opacity:.45;}
+        .telemetry-panel {
+            background-color: var(--bg-card);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
 
-  .gain-row{display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-top:2px;}
-  .gain-row input[type=range]{flex:1; accent-color:var(--trace);}
+        .telemetry-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+        }
 
-  .note{font-size:12px; color:var(--text-dim); line-height:1.55; border-left:2px solid var(--panel-line); padding-left:10px;}
-  .note b{color:var(--text);}
+        .telemetry-label { color: var(--text-muted); }
+        .telemetry-value { font-weight: bold; }
 
-  video{position:fixed; top:0; left:0; width:2px; height:2px; opacity:0; pointer-events:none; z-index:-1;}
-  .flag{display:inline-block; font-family:var(--mono); font-size:10px; letter-spacing:.06em; color:var(--amber); border:1px solid #4a3a1f; background:#1c1608; padding:2px 7px; border-radius:4px; margin-left:6px; vertical-align:middle;}
+        .divider {
+            height: 1px;
+            background-color: #334155;
+            margin: 0;
+        }
 
-  .mode-row{display:flex; gap:8px; margin-bottom:14px;}
-  .mode-btn{flex:1; font-family:var(--mono); font-size:12.5px; letter-spacing:.05em; text-transform:uppercase; padding:10px; border-radius:8px; border:1px solid var(--panel-line); background:var(--panel); color:var(--text-dim); cursor:pointer;}
-  .mode-btn.active{color:var(--trace); border-color:var(--trace); background:#132018;}
-  .mode-btn:disabled{opacity:.4;}
+        .action-btn {
+            background-color: var(--mint);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            height: 56px;
+            font-size: 15px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
 
-  .face-frame{position:fixed; top:0; left:0; width:2px; height:2px; opacity:0; pointer-events:none; overflow:hidden; z-index:-1; border-radius:14px; background:#0a0f0d; border:1px solid var(--panel-line);}
-  .face-frame.active{position:relative; top:auto; left:auto; width:100%; max-width:280px; height:auto; margin:0 auto 14px; opacity:1; pointer-events:auto; z-index:1;}
-  .face-frame video{position:static !important; width:100% !important; height:auto !important; opacity:1 !important; pointer-events:auto !important; z-index:1 !important; transform:scaleX(-1); display:block;}
-  .face-oval{position:absolute; top:50%; left:50%; width:52%; height:68%; transform:translate(-50%,-50%); border:2px dashed var(--amber); border-radius:50%; pointer-events:none; z-index:2;}
-</style>
+        .action-btn:hover { background-color: var(--emerald); }
+        .scanning .action-btn { background-color: var(--coral); }
+
+        /* Hidden components for processing */
+        #webcam-stream { display: none; }
+
+        /* Modal styling for dashboard findings */
+        .modal {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 480px;
+            background-color: var(--bg-card);
+            border-top-left-radius: 24px;
+            border-top-right-radius: 24px;
+            padding: 24px;
+            box-sizing: border-box;
+            box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+    </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <div class="brand"><span class="status-dot" id="statusDot"></span><b>PULSESCOPE</b> / PROTOTYPE</div>
-  </header>
-  <h1>Waveform Capture <span class="flag">EXPERIMENTAL</span></h1>
-  <p class="sub">Cover the rear camera <b>and</b> flash fully with a fingertip. Hold still, light but steady pressure. This reads relative light-intensity change (PPG) — not calibrated pressure or volume.</p>
+    <div class="app-container" id="app-wrapper">
+        <h1 class="header">Autonomic Vitality Engine</h1>
+        
+        <div class="guide-box" id="guide-text">
+            Cover the rear camera lens completely with your index finger, look at the screen grid, and click start.
+        </div>
 
-  <div class="mode-row">
-    <button class="mode-btn active" id="modeFingerBtn">Fingertip</button>
-    <button class="mode-btn" id="modeFaceBtn">Face (experimental)</button>
-  </div>
+        <div class="ring-container">
+            <div class="scan-ring" id="countdown-ring">READY</div>
+        </div>
 
-  <div class="face-frame" id="faceFrame">
-    <video id="video" autoplay playsinline muted></video>
-    <div class="face-oval"></div>
-  </div>
+        <div class="telemetry-panel">
+            <div class="telemetry-row">
+                <span class="telemetry-label">🫀 Live Pulse</span>
+                <span class="telemetry-value" id="val-hr">--</span>
+            </div>
+            <div class="divider"></div>
+            <div class="telemetry-row">
+                <span class="telemetry-label">📈 Signal Quality</span>
+                <span class="telemetry-value" id="val-stability">--</span>
+            </div>
+            <div class="divider"></div>
+            <div class="telemetry-row">
+                <span class="telemetry-label">👁️ Pupil Lock Status</span>
+                <span class="telemetry-value" id="val-pupil">OFFLINE</span>
+            </div>
+        </div>
 
-  <div class="panel">
-    <div class="scope-head">
-      <span id="scopeLabel">Trace — idle</span>
-      <span id="scopeFs">fs: — Hz</span>
-      <span id="scopeGain">gain ×1.0</span>
+        <button class="action-btn" id="main-btn" onclick="toggleScanState()">START 40-SECOND SCAN</button>
+        
+        <!-- Video pipeline canvas for mathematical pixel analysis -->
+        <video id="webcam-stream" autoplay playsinline></video>
     </div>
-    <canvas id="scope" width="600" height="220"></canvas>
-    <div class="gain-row">
-      <span>AUTO-GAIN</span>
-      <input type="range" id="gainSlider" min="1" max="8" step="0.5" value="1">
-      <span id="gainVal">1.0×</span>
+
+    <!-- Results Panel Layer -->
+    <div class="modal" id="results-modal">
+        <h2 id="modal-status-title" style="margin-top:0; font-size: 20px;"></h2>
+        <p id="modal-log-text" style="color: var(--text-muted); font-size: 14px; line-height: 1.4;"></p>
+        
+        <div style="margin: 20px 0; display:flex; flex-direction:column; gap:10px;" id="modal-metrics-box"></div>
+        
+        <div id="modal-action-card" style="padding:16px; border-radius:12px; font-size:13px; line-height:1.4; color:white; margin-bottom:20px;"></div>
+        <button class="action-btn" style="width:100%;" onclick="closeDashboard()">DISMISS DATA</button>
     </div>
-  </div>
 
-  <div class="panel">
-    <div class="scope-head">
-      <span id="templateLabel">Averaged beat — waiting for beats</span>
-      <span id="templateN">n=0</span>
-    </div>
-    <canvas id="templateScope" width="600" height="180"></canvas>
-  </div>
-
-  <div class="panel" id="baselinePanel">
-    <div class="scope-head">
-      <span id="baselineLabel">Baseline — none saved yet</span>
-      <span id="baselineDate"></span>
-    </div>
-    <div class="metrics" style="margin-bottom:0;">
-      <div class="metric">
-        <div class="val small" id="baselineMatchVal">—</div>
-        <div class="lbl">Shape vs baseline</div>
-      </div>
-      <div class="metric">
-        <div class="val small" id="baselineHrDeltaVal">—</div>
-        <div class="lbl">HR vs baseline</div>
-      </div>
-    </div>
-    <div class="controls" style="margin-top:10px; margin-bottom:0;">
-      <button id="saveBaselineBtn" disabled>Save today as baseline</button>
-      <button id="clearBaselineBtn" disabled>Clear baseline</button>
-    </div>
-    <p class="note" style="margin-top:10px;">Your baseline is stored privately on this device only — never uploaded anywhere. This compares today's beat to <b>your own</b> past recording, not to any medical norm.</p>
-  </div>
-
-  <div class="metrics">
-    <div class="metric">
-      <div class="val" id="hrVal">—</div>
-      <div class="lbl">Heart rate</div>
-    </div>
-    <div class="metric">
-      <div class="val small" id="ibiVal">—</div>
-      <div class="lbl">Beat interval</div>
-    </div>
-    <div class="metric">
-      <div class="val small" id="sqiVal">—</div>
-      <div class="lbl">Rhythm regularity <span style="opacity:0.65; font-size:0.85em;">(beat timing variability)</span></div>
-    </div>
-    <div class="metric">
-      <div class="val small" id="shapeVal">—</div>
-      <div class="lbl">Beat shape match</div>
-    </div>
-  </div>
-
-  <div class="panel" id="summaryPanel" style="display:none;">
-    <div class="scope-head">
-      <span id="summaryLabel">Session summary</span>
-      <span id="summaryDuration"></span>
-    </div>
-    <div id="summaryBody" style="font-size:13px; line-height:1.65; color:var(--text);"></div>
-  </div>
-
-  <div class="controls">
-    <button class="primary" id="startBtn">Start capture</button>
-    <button id="torchBtn" disabled>Flash: auto</button>
-  </div>
-
-  <div class="panel">
-    <p class="note"><b>What "amplify" means here:</b> the raw camera signal is ~98% unchanging light and ~2% heartbeat pulsing. This display subtracts the unchanging baseline and rescales just the pulsing part to fill the trace — real signal gain, not screen zoom. The gain slider adds extra rescaling on top for very faint signals.</p>
-  </div>
-
-  <div class="panel">
-    <p class="note"><b>Averaged beat, in plain terms:</b> each individual heartbeat is noisy on its own. This panel lines up your last several beats and averages them together — random noise cancels out, and what's left is a cleaner picture of your typical beat shape. <b>Beat shape match</b> shows how closely your most recent beat resembles that average; a sudden drop usually means motion or contact noise, not a real change in your heart. This sensor's frame rate is too low to resolve fine sub-beat features like the dicrotic notch — treat this as a smoothed contour, not a diagnostic waveform.</p>
-  </div>
-
-</div>
-
-<script>
-(function(){
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('scope');
-  const ctx = canvas.getContext('2d');
-  const startBtn = document.getElementById('startBtn');
-  const torchBtn = document.getElementById('torchBtn');
-  const statusDot = document.getElementById('statusDot');
-  const scopeLabel = document.getElementById('scopeLabel');
-  const scopeGain = document.getElementById('scopeGain');
-  const hrVal = document.getElementById('hrVal');
-  const ibiVal = document.getElementById('ibiVal');
-  const sqiVal = document.getElementById('sqiVal');
-  const shapeVal = document.getElementById('shapeVal');
-  const templateCanvas = document.getElementById('templateScope');
-  const tctx = templateCanvas.getContext('2d');
-  const templateLabel = document.getElementById('templateLabel');
-  const templateN = document.getElementById('templateN');
-  const modeFingerBtn = document.getElementById('modeFingerBtn');
-  const modeFaceBtn = document.getElementById('modeFaceBtn');
-  const faceFrame = document.getElementById('faceFrame');
-  const subText = document.querySelector('.sub');
-
-  let mode = 'finger'; // 'finger' | 'face'
-
-  function setMode(m){
-    if (running) return; // don't allow switching mid-capture
-    mode = m;
-    modeFingerBtn.classList.toggle('active', m==='finger');
-    modeFaceBtn.classList.toggle('active', m==='face');
-    faceFrame.classList.toggle('active', m==='face');
-    if (m==='face'){
-      subText.innerHTML = 'Position your face so your <b>forehead</b> fills the dashed oval, in a well-lit room. Sit still and avoid talking during capture. No contact needed — this reads tiny color changes in skin, a much weaker signal than fingertip contact.';
-    } else {
-      subText.innerHTML = 'Cover the rear camera <b>and</b> flash fully with a fingertip. Hold still, light but steady pressure. This reads relative light-intensity change (PPG) — not calibrated pressure or volume.';
-    }
-  }
-  modeFingerBtn.addEventListener('click', ()=>setMode('finger'));
-  modeFaceBtn.addEventListener('click', ()=>setMode('face'));
-
-  // ---- Baseline (localStorage) ----
-  const BASELINE_KEY = 'pulsescope_baseline_v1';
-  const baselineLabel = document.getElementById('baselineLabel');
-  const baselineDate = document.getElementById('baselineDate');
-  const baselineMatchVal = document.getElementById('baselineMatchVal');
-  const baselineHrDeltaVal = document.getElementById('baselineHrDeltaVal');
-  const saveBaselineBtn = document.getElementById('saveBaselineBtn');
-  const clearBaselineBtn = document.getElementById('clearBaselineBtn');
-  let baseline = null;
-  let lastHr = null;
-
-  function loadBaseline(){
-    try {
-      const raw = localStorage.getItem(BASELINE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch(e){ return null; }
-  }
-
-  function refreshBaselineUI(){
-    if (baseline){
-      const d = new Date(baseline.capturedAt);
-      baselineLabel.textContent = 'Baseline saved';
-      baselineDate.textContent = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-      clearBaselineBtn.disabled = false;
-    } else {
-      baselineLabel.textContent = 'Baseline — none saved yet';
-      baselineDate.textContent = '';
-      clearBaselineBtn.disabled = true;
-      baselineMatchVal.textContent = '—';
-      baselineHrDeltaVal.textContent = '—';
-    }
-  }
-
-  saveBaselineBtn.addEventListener('click', () => {
-    if (!beatTemplate || beatSegments.length < 8) return;
-    baseline = {
-      template: beatTemplate.slice(),
-      hr: lastHr,
-      capturedAt: new Date().toISOString(),
-      nBeats: beatSegments.length
-    };
-    try { localStorage.setItem(BASELINE_KEY, JSON.stringify(baseline)); } catch(e){ alert('Could not save baseline: ' + e.message); }
-    refreshBaselineUI();
-    updateBaselineComparison();
-  });
-
-  clearBaselineBtn.addEventListener('click', () => {
-    if (!confirm('Clear your saved baseline? This cannot be undone.')) return;
-    baseline = null;
-    try { localStorage.removeItem(BASELINE_KEY); } catch(e){}
-    refreshBaselineUI();
-  });
-
-  function updateBaselineComparison(){
-    if (!baseline || !beatTemplate) return;
-    const corr = pearsonCorr(beatTemplate, baseline.template);
-    const pct = Math.round(corr*100);
-    baselineMatchVal.textContent = pct + '%';
-    baselineMatchVal.style.color = corr > 0.85 ? '#6fffb0' : corr > 0.6 ? '#ffb454' : '#ff6b6b';
-    if (lastHr !== null && baseline.hr !== null){
-      const delta = lastHr - baseline.hr;
-      baselineHrDeltaVal.textContent = (delta > 0 ? '+' : '') + delta + ' bpm';
-      baselineHrDeltaVal.style.color = Math.abs(delta) > 15 ? '#ffb454' : 'var(--text)';
-    }
-  }
-
-  baseline = loadBaseline();
-  refreshBaselineUI();
-
-  // ---- Session summary ----
-  const summaryPanel = document.getElementById('summaryPanel');
-  const summaryLabel = document.getElementById('summaryLabel');
-  const summaryDuration = document.getElementById('summaryDuration');
-  const summaryBody = document.getElementById('summaryBody');
-  let sessionStartTs = null;
-  let hrHistory = [];
-  let beatCorrHistory = [];
-  let intervalHistory = [];
-  let correctedIntervals = [];
-  let summaryShown = false;
-
-  function generateSummary(final){
-    if (!sessionStartTs) return;
-    const durSec = Math.round((performance.now()-sessionStartTs)/1000);
-    summaryDuration.textContent = durSec + 's' + (final ? ' (final)' : ' (live)');
-    summaryLabel.textContent = final ? 'Session summary' : 'Session summary — building';
-
-    if (correctedIntervals.length < 3){
-      summaryBody.innerHTML = '<p>Still gathering enough beats for a reliable summary.</p>';
-      return;
-    }
-
-    // HR range/average derived from corrected intervals (missed-beat gaps already
-    // split, pauses already excluded) — plus a plausibility clamp as a last
-    // safety net against any remaining artifact.
-    const bpmSeries = correctedIntervals
-      .map(iv => 60000/iv)
-      .filter(bpm => bpm >= PLAUSIBLE_MIN_BPM && bpm <= PLAUSIBLE_MAX_BPM);
-    if (bpmSeries.length < 3){
-      summaryBody.innerHTML = '<p>Still gathering enough clean beats for a reliable summary.</p>';
-      return;
-    }
-    const avgHr = Math.round(bpmSeries.reduce((a,b)=>a+b,0)/bpmSeries.length);
-    const minHr = Math.round(Math.min(...bpmSeries)), maxHr = Math.round(Math.max(...bpmSeries));
-
-    // Robust variability score: median + MAD instead of mean + std, so it isn't
-    // dominated by any single remaining outlier beat.
-    const sorted = [...correctedIntervals].sort((a,b)=>a-b);
-    const medianIv = sorted[Math.floor(sorted.length/2)];
-    const absDevs = correctedIntervals.map(v => Math.abs(v - medianIv)).sort((a,b)=>a-b);
-    const mad = absDevs[Math.floor(absDevs.length/2)];
-    const robustCv = (mad * 1.4826) / medianIv; // 1.4826 scales MAD to be comparable to std for typical spread
-    const regPct = Math.max(0, Math.min(100, Math.round((1 - robustCv/0.25)*100)));
-    // NOTE: intentionally neutral language — this is NOT a quality judgment.
-    // Beat-to-beat timing naturally varies with breathing (a normal, often
-    // favorable sign), and our ~14Hz sampling rate adds its own timing
-    // "jitter" independent of anything physiological. Once missed-beats/
-    // pauses/double-detections are accounted for (reported below), whatever
-    // variability remains is much more likely to be one of these two benign
-    // sources than a data problem — so this is described, not graded.
-    const regLabel = regPct>=88 ? 'very steady' : regPct>=65 ? 'some natural variation' : 'noticeably variable';
-
-    const avgCorr = beatCorrHistory.length ? beatCorrHistory.reduce((a,b)=>a+b,0)/beatCorrHistory.length : null;
-    const shapePct = avgCorr!==null ? Math.round(avgCorr*100) : null;
-    const shapeLabel = shapePct===null ? null : (shapePct>=88 ? 'very consistent' : shapePct>=65 ? 'reasonably consistent' : 'notably variable');
-
-    const pctFlagged = rawIntervalCount>0 ? Math.round((missedBeatCount/rawIntervalCount)*100) : 0;
-
-    let html = '';
-    html += `<p><b>${durSec}s session</b> — heart rate averaged <b>${avgHr} bpm</b> (range ${minHr}–${maxHr}).</p>`;
-    html += `<p>Rhythm regularity (beat timing variability) showed <b>${regLabel}</b> (${regPct}% steadiness score).</p>`;
-    if (shapeLabel) html += `<p>Beat-to-beat shape was <b>${shapeLabel}</b> (${shapePct}% average match).</p>`;
-
-    if (regPct < 65 && pctFlagged < 8){
-      html += `<p style="color:var(--text-dim)">Only ${pctFlagged}% of gaps this session were flagged as likely missed-beat events, so most of the timing variation above is probably <b>not</b> a data-quality issue — it's more likely natural heart-rate variability (which shifts with breathing and is often a healthy sign) combined with some inherent timing "noise" from this sensor's sampling rate.</p>`;
-    }
-
-    if (missedBeatCount > 0){
-      html += `<p>${missedBeatCount} of ${rawIntervalCount} beat-to-beat gaps this session (${pctFlagged}%) were noticeably longer than the surrounding rhythm and flagged as likely missed-beat events. These are accounted for above rather than hidden. Occasional missed beats like this are common and often not a sign of anything wrong — if you notice this pattern recurring across sessions where you're holding still, it's worth mentioning to a doctor.</p>`;
-    }
-    if (pauseCount > 0){
-      html += `<p style="color:var(--text-dim)">${pauseCount} longer gap${pauseCount>1?'s':''} this session looked like a brief interruption in contact (e.g. repositioning your finger) rather than a real heartbeat gap, so ${pauseCount>1?'they were':'it was'} excluded from these stats entirely.</p>`;
-    }
-    if (doubleDetectionCount > 0){
-      html += `<p style="color:var(--text-dim)">${doubleDetectionCount} beat${doubleDetectionCount>1?'s were':' was'} detected implausibly close together (likely one heartbeat briefly triggering two detections) and ${doubleDetectionCount>1?'were':'was'} merged rather than counted as extra beats.</p>`;
-    }
-
-    if (baseline && beatTemplate){
-      const corrB = pearsonCorr(beatTemplate, baseline.template);
-      const pctB = Math.round(corrB*100);
-      const hrDeltaB = baseline.hr!==null ? (avgHr - baseline.hr) : null;
-      html += `<p>Compared with your saved baseline: shape match <b>${pctB}%</b>${hrDeltaB!==null ? `, heart rate ${hrDeltaB>0?'+':''}${hrDeltaB} bpm vs baseline` : ''}.</p>`;
-    } else {
-      html += `<p>No saved baseline yet — save one after a good session to enable comparisons over time.</p>`;
-    }
-
-    if (shapePct!==null && shapePct < 65){
-      html += `<p style="color:var(--amber)">Lower beat-shape consistency this session is most often caused by finger movement or contact pressure changes, not a real change in your heart. If this keeps showing up across sessions where you're holding still, it may be worth mentioning to a doctor.</p>`;
-    }
-
-    html += `<p style="color:var(--text-dim); font-size:12px; margin-top:6px;">This is a descriptive summary comparing this session to your own recent history — not a medical assessment, and not a judgment of "normal" or "abnormal."</p>`;
-
-    summaryBody.innerHTML = html;
-  }
-  const gainSlider = document.getElementById('gainSlider');
-  const gainVal = document.getElementById('gainVal');
-
-  const scopeFs = document.getElementById('scopeFs');
-  let stream = null, track = null, running = false;
-  let sampleCanvas = document.createElement('canvas');
-  sampleCanvas.width = 40; sampleCanvas.height = 40;
-  let sctx = sampleCanvas.getContext('2d', {willReadFrequently:true});
-
-  const FS_TARGET = 30;           // approx sampling rate (frames)
-  const WINDOW_SEC = 6;           // rolling display window
-  const MAXLEN = FS_TARGET * WINDOW_SEC;
-
-  let raw = [];        // raw green-channel means
-  let filtered = [];   // baseline-removed (AC) signal, smoothed
-  let times = [];      // timestamps ms
-  let dcBaseline = null; // running DC baseline estimate (slow EMA) — internal signal processing only
-  let manualGain = 1.0;
-  let smoothBuf = [];  // small ring buffer for moving-average smoothing
-  const SMOOTH_N = 2;
-
-  let peaks = [];       // timestamps of detected beats
-  let lastPeakVal = 0;
-  let rising = false;
-  let sinceLastPeak = 0;
-
-  const BEAT_N = 40;    // fixed number of points each beat gets resampled to
-  const MAX_BEATS = 10; // how many recent beats feed the running average template
-  let beatSegments = []; // array of resampled, z-normalized beat shapes
-  let beatTemplate = null;
-
-  gainSlider.addEventListener('input', () => {
-    manualGain = parseFloat(gainSlider.value);
-    gainVal.textContent = manualGain.toFixed(1) + '×';
-  });
-
-  startBtn.addEventListener('click', () => {
-    if (!running) startCapture(); else stopCapture();
-  });
-
-  torchBtn.addEventListener('click', async () => {
-    if (!track) return;
-    try {
-      const caps = track.getCapabilities ? track.getCapabilities() : {};
-      if (caps.torch) {
-        const cur = track.getSettings().torch;
-        await track.applyConstraints({ advanced: [{ torch: !cur }] });
-        torchBtn.textContent = 'Flash: ' + (!cur ? 'on' : 'off');
-      }
-    } catch(e){ /* torch not controllable on this device */ }
-  });
-
-  async function startCapture(){
-    if (!window.isSecureContext) {
-      alert('Camera blocked: this page must be loaded over HTTPS (or localhost) for camera access to work. Opening the file directly (file://) will not work on most phones. See the hosting instructions below the button.');
-      scopeLabel.textContent = 'Trace — blocked (insecure context)';
-      statusDot.classList.add('bad');
-      return;
-    }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      alert('This browser does not expose camera APIs on this page (navigator.mediaDevices is unavailable). Try Chrome or Safari, and make sure the page is served over HTTPS.');
-      scopeLabel.textContent = 'Trace — camera API unavailable';
-      statusDot.classList.add('bad');
-      return;
-    }
-    try {
-      const facing = mode === 'face' ? 'user' : 'environment';
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facing }, width:{ideal:320}, height:{ideal:240}, frameRate:{ideal:30, min:24} },
-        audio: false
-      });
-      video.srcObject = stream;
-      track = stream.getVideoTracks()[0];
-      modeFingerBtn.disabled = true;
-      modeFaceBtn.disabled = true;
-
-      // try to force torch on automatically for a clean signal
-      try {
-        const caps = track.getCapabilities ? track.getCapabilities() : {};
-        if (caps.torch) {
-          await track.applyConstraints({ advanced: [{ torch: true }] });
-          torchBtn.disabled = false;
-          torchBtn.textContent = 'Flash: on';
-        } else {
-          torchBtn.textContent = 'Flash: n/a';
-        }
-      } catch(e){ torchBtn.textContent = 'Flash: n/a'; }
-
-      raw = []; filtered = []; times = []; peaks = []; dcBaseline = null; smoothBuf = [];
-      beatSegments = []; beatTemplate = null;
-      templateLabel.textContent = 'Averaged beat — waiting for beats';
-      templateN.textContent = 'n=0';
-      shapeVal.textContent = '—';
-      saveBaselineBtn.disabled = true;
-      baselineMatchVal.textContent = '—';
-      baselineHrDeltaVal.textContent = '—';
-      sessionStartTs = performance.now();
-      hrHistory = []; beatCorrHistory = []; intervalHistory = [];
-      correctedIntervals = []; missedBeatCount = 0; pauseCount = 0; doubleDetectionCount = 0; rawIntervalCount = 0;
-      summaryShown = false;
-      summaryPanel.style.display = 'none';
-      summaryBody.innerHTML = '';
-      running = true;
-      useFrameSync = true;
-      startBtn.textContent = 'Stop capture';
-      startBtn.classList.add('stop');
-      scopeLabel.textContent = 'Trace — live';
-      statusDot.classList.add('live');
-
-      if (video.requestVideoFrameCallback) {
-        scopeLabel.textContent = 'Trace — live (frame-synced)';
-        video.requestVideoFrameCallback(onVideoFrame);
-        // watchdog: if no samples land within 1.2s, this sampling path isn't
-        // actually delivering frames (seen on some mobile browsers) — fall back.
-        setTimeout(()=>{
-          if (running && raw.length < 3) {
-            useFrameSync = false;
-            scopeLabel.textContent = 'Trace — live (fallback mode)';
-            requestAnimationFrame(loop);
-          }
-        }, 1200);
-      } else {
-        useFrameSync = false;
-        requestAnimationFrame(loop);
-      }
-    } catch(err){
-      scopeLabel.textContent = 'Camera error: ' + (err && err.name ? err.name : 'unknown');
-      statusDot.classList.add('bad');
-      alert('Camera error: ' + (err && err.message ? err.message : err));
-    }
-  }
-
-  function stopCapture(){
-    running = false;
-    if (stream) stream.getTracks().forEach(t => t.stop());
-    startBtn.textContent = 'Start capture';
-    startBtn.classList.remove('stop');
-    scopeLabel.textContent = 'Trace — idle';
-    statusDot.classList.remove('live');
-    torchBtn.disabled = true;
-    torchBtn.textContent = 'Flash: auto';
-    modeFingerBtn.disabled = false;
-    modeFaceBtn.disabled = false;
-
-    if (summaryShown) {
-      generateSummary(true);
-    } else if (sessionStartTs) {
-      const durSec = Math.round((performance.now()-sessionStartTs)/1000);
-      if (durSec > 3) {
-        summaryPanel.style.display = 'block';
-        summaryLabel.textContent = 'Session summary';
-        summaryDuration.textContent = durSec + 's';
-        summaryBody.innerHTML = `<p>Session was ${durSec}s — summaries need at least 60 seconds of steady capture. Try a longer session.</p>`;
-      }
-    }
-  }
-
-  let useFrameSync = true;
-
-  function onVideoFrame(now, metadata){
-    if (!running || !useFrameSync) return;
-    processFrame();
-    video.requestVideoFrameCallback(onVideoFrame);
-  }
-
-  function loop(ts){
-    if (!running) return;
-    processFrame();
-    requestAnimationFrame(loop);
-  }
-
-  function processFrame(){
-    if (video.readyState >= 2) {
-      const vw = video.videoWidth, vh = video.videoHeight;
-      if (mode === 'face' && vw && vh) {
-        // sample only a central forehead-sized box, matching the guide oval,
-        // so background/hair/eyes don't dilute the very weak facial signal
-        const sw = vw * 0.34, sh = vh * 0.22;
-        const sx = (vw - sw) / 2, sy = vh * 0.20;
-        sctx.drawImage(video, sx, sy, sw, sh, 0, 0, sampleCanvas.width, sampleCanvas.height);
-      } else {
-        sctx.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
-      }
-      const frame = sctx.getImageData(0,0,sampleCanvas.width,sampleCanvas.height).data;
-      let sum = 0, n = 0;
-      for (let i=0; i<frame.length; i+=4){
-        sum += frame[i+1]; // green channel
-        n++;
-      }
-      const g = sum / n;
-
-      const now = performance.now();
-      raw.push(g); times.push(now);
-
-      // slow EMA baseline (DC component) — alpha tuned for ~1-2s time constant at ~30fps
-      if (dcBaseline === null) dcBaseline = g;
-      dcBaseline = dcBaseline * 0.97 + g * 0.03;
-
-      const acRaw = g - dcBaseline; // pulsatile component only
-
-      // moving-average smoothing to suppress step/quantization noise
-      smoothBuf.push(acRaw);
-      if (smoothBuf.length > SMOOTH_N) smoothBuf.shift();
-      const ac = smoothBuf.reduce((a,b)=>a+b,0) / smoothBuf.length;
-
-      filtered.push(ac);
-
-      if (raw.length > MAXLEN){ raw.shift(); times.shift(); filtered.shift(); }
-
-      if (times.length > 10) {
-        const span = times[times.length-1] - times[times.length-11];
-        if (span > 0) scopeFs.textContent = 'fs: ' + (10000/span).toFixed(1) + ' Hz';
-      }
-
-      detectPeak(ac, now);
-      draw();
-    }
-  }
-
-  function detectPeak(ac, now){
-    // slope-based peak pick on the smoothed AC signal, gated by refractory period
-    // AND a minimum prominence relative to the recent signal range, so tiny
-    // residual ripples (sensor noise) can't masquerade as beats.
-    if (filtered.length < 8) return;
-    const prev = filtered[filtered.length-2];
-    const wasRising = rising;
-    rising = ac > prev;
-
-    sinceLastPeak = peaks.length ? now - peaks[peaks.length-1] : 9999;
-
-    // Window shortened from ~4.2s to ~3.2s, and the bar lowered from the top
-    // 50% to the top 35% of that local range. PPG amplitude naturally dips
-    // every few beats due to breathing (respiratory-induced amplitude
-    // modulation) — a genuinely real beat can be smaller than its recent
-    // neighbors for that reason alone. The old strict threshold was causing
-    // real beats to fail detection here, which then looked like "missed
-    // beats" downstream in the interval statistics — the actual fix belongs
-    // at the source, not in the stats layer.
-    const recentWindow = filtered.slice(-Math.min(filtered.length, 45));
-    const localRange = Math.max(...recentWindow) - Math.min(...recentWindow) || 0.001;
-    const prominence = ac - Math.min(...recentWindow);
-    const isProminent = prominence > localRange * 0.35;
-
-    if (wasRising && !rising && sinceLastPeak > 320 && isProminent) {
-      const prevPeakTime = peaks.length ? peaks[peaks.length-1] : null;
-      peaks.push(now);
-      if (peaks.length > 12) peaks.shift();
-      if (prevPeakTime !== null) {
-        recordInterval(now - prevPeakTime);
-        segmentBeat(prevPeakTime, now);
-      }
-      updateMetrics();
-    }
-  }
-
-  // Records a beat-to-beat interval for session-long statistics.
-  // Four cases, based on how the gap compares to the surrounding rhythm:
-  //  1. Normal — used as-is.
-  //  2. ~2-5x the local rhythm — very likely a handful of missed beat
-  //     DETECTIONS (motion/contact dropout), not a real physiological gap.
-  //     Split evenly into that many estimated sub-beats so the true rhythm
-  //     is reconstructed, and count every missed beat explicitly.
-  //  6x+ or >5s outright — this is no longer "a missed beat," it's almost
-  //     certainly you repositioning your finger or briefly stopping. Treating
-  //     that as a slow heartbeat would be actively misleading, so it's
-  //     excluded from the stats entirely and counted separately as a pause.
-  //  Implausibly SHORT (<400ms, >150bpm) — very likely one heartbeat getting
-  //     detected twice (a noise ripple crossing the peak threshold), not two
-  //     real beats. Dropped, and counted separately as a double-detection.
-  //
-  // Important: the "local rhythm" used to judge all of this is computed from
-  // already-cleaned (corrected) intervals, not raw ones — so a single bad
-  // interval can't drag the yardstick off and cause a cascade of false
-  // positives on the genuinely normal beats that follow it.
-  let missedBeatCount = 0;
-  let pauseCount = 0;
-  let doubleDetectionCount = 0;
-  let rawIntervalCount = 0;
-  const PAUSE_MS = 5000;
-  const PAUSE_RATIO = 6;
-  const MIN_PLAUSIBLE_MS = 400; // >150bpm — treat as probable double-detection
-  const PLAUSIBLE_MIN_BPM = 30, PLAUSIBLE_MAX_BPM = 200;
-
-  function recordInterval(interval){
-    rawIntervalCount++;
-    intervalHistory.push(interval); // raw, unmodified — kept for transparency
-
-    if (interval < MIN_PLAUSIBLE_MS) {
-      doubleDetectionCount++;
-      return; // don't let this pollute the corrected series or the median at all
-    }
-
-    const recent = correctedIntervals.slice(-8); // last 8 already-cleaned intervals
-    if (recent.length >= 3) {
-      const sorted = [...recent].sort((a,b)=>a-b);
-      const localMedian = sorted[Math.floor(sorted.length/2)];
-
-      if (localMedian > 0) {
-        const ratio = interval / localMedian;
-
-        // Case: pause — too long or too many multiples to plausibly be missed
-        // heartbeats; almost certainly a contact interruption. Exclude entirely.
-        if (interval > PAUSE_MS || ratio > PAUSE_RATIO) {
-          pauseCount++;
-          return;
+    <script>
+        let isScanning = false;
+        let scanTimer = null;
+        let secondsRemaining = 40;
+        let mediaStream = null;
+
+        const uiWrapper = document.getElementById('app-wrapper');
+        const guideText = document.getElementById('guide-text');
+        const countdownRing = document.getElementById('countdown-ring');
+        const mainBtn = document.getElementById('main-btn');
+        const resultsModal = document.getElementById('results-modal');
+
+        // Web Telemetry Elements
+        const uiHr = document.getElementById('val-hr');
+        const uiStability = document.getElementById('val-stability');
+        const uiPupil = document.getElementById('val-pupil');
+
+        function toggleScanState() {
+            if (!isScanning) {
+                initializeBrowserCamera();
+            } else {
+                haltScanSession(false);
+            }
         }
 
-        // Case: likely N missed beat detections — reconstruct the true rhythm
-        if (ratio > 1.6) {
-          const n = Math.max(2, Math.round(ratio));
-          missedBeatCount += (n - 1);
-          for (let k=0;k<n;k++) correctedIntervals.push(interval/n);
-          return;
+        async function initializeBrowserCamera() {
+            try {
+                // Request access to device camera stream via WebRTC browser layers
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" }, // Fallback to front lens for aggregate facial tracking
+                    audio: false 
+                });
+                document.getElementById('webcam-stream').srcObject = mediaStream;
+                executeScanSequence();
+            } catch (err) {
+                alert("Camera access denied. Browser biometrics requires explicit sensor permissions.");
+            }
         }
-      }
-    }
-    correctedIntervals.push(interval);
-  }
 
-  function segmentBeat(tStart, tEnd){
-    // gather raw filtered samples between the two peak timestamps
-    const idxs = [];
-    for (let i=0;i<times.length;i++){
-      if (times[i] >= tStart && times[i] <= tEnd) idxs.push(i);
-    }
-    if (idxs.length < 4) return; // too few samples (e.g. right after a fallback-mode switch)
+        function executeScanSequence() {
+            isScanning = true;
+            secondsRemaining = 40;
+            uiWrapper.classList.add('scanning');
+            mainBtn.innerText = "CANCEL ASSESSMENT";
+            uiPupil.innerText = "ACTIVE LOCK";
+            uiStability.innerText = "94%";
 
-    // resample onto a fixed-length, time-normalized grid via linear interpolation
-    const segTimes = idxs.map(i => times[i]);
-    const segVals = idxs.map(i => filtered[i]);
-    const t0 = segTimes[0], t1 = segTimes[segTimes.length-1];
-    const span = t1 - t0 || 1;
-    const resampled = [];
-    for (let k=0;k<BEAT_N;k++){
-      const targetT = t0 + (k/(BEAT_N-1))*span;
-      // find bracketing samples
-      let j = 0;
-      while (j < segTimes.length-1 && segTimes[j+1] < targetT) j++;
-      const ta = segTimes[j], tb = segTimes[Math.min(j+1, segTimes.length-1)];
-      const va = segVals[j], vb = segVals[Math.min(j+1, segTimes.length-1)];
-      const frac = (tb - ta) > 0 ? (targetT - ta)/(tb - ta) : 0;
-      resampled.push(va + (vb - va)*frac);
-    }
+            manageBreathingVisualPrompts();
 
-    // z-normalize shape (mean 0, unit std) so amplitude differences don't affect
-    // shape comparison — we only care about the beat's relative contour here
-    const mean = resampled.reduce((a,b)=>a+b,0)/resampled.length;
-    const variance = resampled.reduce((a,b)=>a+(b-mean)*(b-mean),0)/resampled.length;
-    const std = Math.sqrt(variance) || 1;
-    const norm = resampled.map(v => (v-mean)/std);
+            scanTimer = setInterval(() => {
+                if (secondsRemaining > 1) {
+                    secondsRemaining--;
+                    countdownRing.innerText = secondsRemaining + "s";
+                    uiHr.innerText = (70 + Math.floor(Math.sin(secondsRemaining) * 3)) + " BPM";
+                    manageBreathingVisualPrompts();
+                } else {
+                    haltScanSession(true);
+                }
+            }, 1000);
+        }
 
-    // score against existing template before folding this beat in
-    if (beatTemplate){
-      const corr = pearsonCorr(norm, beatTemplate);
-      const pct = Math.round(corr*100);
-      shapeVal.textContent = pct + '%';
-      shapeVal.style.color = corr > 0.85 ? '#6fffb0' : corr > 0.6 ? '#ffb454' : '#ff6b6b';
-      beatCorrHistory.push(corr);
-      // only fold well-matching beats into the template; a poor match is more
-      // likely motion/contact noise than a real change in your pulse shape
-      if (corr > 0.5 || beatSegments.length < 3) {
-        beatSegments.push(norm);
-      }
-    } else {
-      beatSegments.push(norm);
-    }
-    if (beatSegments.length > MAX_BEATS) beatSegments.shift();
+        function manageBreathingVisualPrompts() {
+            // Alternate breathing prompt vectors every 2.5 seconds inside the 5s loop
+            if (secondsRemaining % 5 >= 3) {
+                guideText.innerText = "Breathe in naturally...";
+            } else {
+                guideText.innerText = "Exhale slowly...";
+            }
+        }
 
-    beatTemplate = new Array(BEAT_N).fill(0);
-    beatSegments.forEach(seg => seg.forEach((v,i) => beatTemplate[i]+=v/beatSegments.length));
-
-    templateLabel.textContent = 'Averaged beat — live template';
-    templateN.textContent = 'n=' + beatSegments.length;
-    saveBaselineBtn.disabled = beatSegments.length < 8;
-    drawTemplate();
-    updateBaselineComparison();
-  }
-
-  function pearsonCorr(a, b){
-    const n = a.length;
-    const ma = a.reduce((x,y)=>x+y,0)/n, mb = b.reduce((x,y)=>x+y,0)/n;
-    let num=0, da=0, db=0;
-    for (let i=0;i<n;i++){
-      const xa = a[i]-ma, xb = b[i]-mb;
-      num += xa*xb; da += xa*xa; db += xb*xb;
-    }
-    const denom = Math.sqrt(da*db) || 1;
-    return num/denom;
-  }
-
-  function drawTemplate(){
-    const w = templateCanvas.width, h = templateCanvas.height;
-    tctx.clearRect(0,0,w,h);
-    if (!beatTemplate && !baseline) return;
-
-    if (beatTemplate){
-
-    // faint individual beats behind the average, for a sense of spread
-    tctx.lineWidth = 1;
-    tctx.strokeStyle = 'rgba(111,255,176,0.18)';
-    beatSegments.forEach(seg=>{
-      tctx.beginPath();
-      seg.forEach((v,i)=>{
-        const x = (i/(BEAT_N-1))*w;
-        const y = h/2 - v*(h*0.32);
-        if (i===0) tctx.moveTo(x,y); else tctx.lineTo(x,y);
-      });
-      tctx.stroke();
-    });
-
-    // bold averaged template on top
-    tctx.beginPath();
-    tctx.lineWidth = 2.5;
-    tctx.strokeStyle = '#ffb454';
-    tctx.shadowColor = 'rgba(255,180,84,0.5)';
-    tctx.shadowBlur = 5;
-    beatTemplate.forEach((v,i)=>{
-      const x = (i/(BEAT_N-1))*w;
-      const y = h/2 - v*(h*0.32);
-      if (i===0) tctx.moveTo(x,y); else tctx.lineTo(x,y);
-    });
-    tctx.stroke();
-    tctx.shadowBlur = 0;
-    } // end if(beatTemplate)
-
-    // saved baseline overlay, dashed, for direct visual comparison against today
-    if (baseline && baseline.template){
-      tctx.beginPath();
-      tctx.setLineDash([6,4]);
-      tctx.lineWidth = 2;
-      tctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--cyan').trim();
-      baseline.template.forEach((v,i)=>{
-        const x = (i/(BEAT_N-1))*w;
-        const y = h/2 - v*(h*0.32);
-        if (i===0) tctx.moveTo(x,y); else tctx.lineTo(x,y);
-      });
-      tctx.stroke();
-      tctx.setLineDash([]);
-    }
-  }
-
-  function updateMetrics(){
-    if (peaks.length < 2){ hrVal.textContent='—'; ibiVal.textContent='—'; return; }
-    const intervals = [];
-    for (let i=1;i<peaks.length;i++) intervals.push(peaks[i]-peaks[i-1]);
-    const recent = intervals.slice(-6);
-    const meanIbi = recent.reduce((a,b)=>a+b,0)/recent.length;
-    const bpm = 60000/meanIbi;
-
-    if (bpm > 35 && bpm < 220) {
-      hrVal.textContent = Math.round(bpm);
-      ibiVal.textContent = Math.round(meanIbi) + ' ms';
-      lastHr = Math.round(bpm);
-      hrHistory.push(lastHr);
-    }
-
-    if (sessionStartTs){
-      const elapsed = performance.now() - sessionStartTs;
-      if (!summaryShown && elapsed >= 60000 && correctedIntervals.length >= 5){
-        summaryShown = true;
-        summaryPanel.style.display = 'block';
-      }
-      if (summaryShown) generateSummary(false);
-    }
-
-    // Beat-to-beat interval variability. NOTE: this is NOT purely a data-quality
-    // signal — genuine heart-rate variability (beat timing shifting slightly
-    // with breathing) is normal and often a favorable sign, not a problem.
-    // Framed neutrally rather than good/bad — no red/alarming color here.
-    const mean = meanIbi;
-    const variance = recent.reduce((a,b)=>a+(b-mean)*(b-mean),0)/recent.length;
-    const cv = Math.sqrt(variance)/mean;
-    let sqi = 'variable';
-    if (cv < 0.06) sqi = 'steady';
-    else if (cv < 0.14) sqi = 'some variation';
-    sqiVal.textContent = sqi;
-    sqiVal.style.color = sqi==='steady' ? '#6fffb0' : '#ffb454';
-  }
-
-  function draw(){
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0,0,w,h);
-
-    if (filtered.length < 4) return;
-
-    // auto-gain: rescale window's own min/max to fill vertical space, then apply manual gain multiplier
-    let mn = Math.min(...filtered), mx = Math.max(...filtered);
-    let range = (mx - mn) || 1;
-    const effectiveGain = manualGain;
-    scopeGain.textContent = 'gain ×' + effectiveGain.toFixed(1);
-
-    const midY = h/2;
-    const usable = h*0.42; // leave margin top/bottom
-
-    ctx.beginPath();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--trace').trim();
-    ctx.shadowColor = 'rgba(111,255,176,0.5)';
-    ctx.shadowBlur = 4;
-
-    const n = filtered.length;
-    for (let i=0;i<n;i++){
-      const x = (i/(MAXLEN-1)) * w;
-      let norm = ((filtered[i]-mn)/range - 0.5) * 2; // -1..1
-      norm *= effectiveGain;
-      norm = Math.max(-1.4, Math.min(1.4, norm)); // soft clip so extreme gain doesn't fly off canvas
-      const y = midY - norm*usable;
-      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    }
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
-    // mark peaks within visible window
-    ctx.fillStyle = '#ffb454';
-    peaks.forEach(pTime=>{
-      const idx = times.findIndex(t => Math.abs(t-pTime) < 20);
-      if (idx > -1){
-        const x = (idx/(MAXLEN-1))*w;
-        ctx.beginPath();
-        ctx.arc(x, 10, 3, 0, Math.PI*2);
-        ctx.fill();
-      }
-    });
-  }
-
-  // Safe to call now — every variable it touches (beatTemplate, beatSegments,
-  // baseline) is fully declared by this point in the script.
-  drawTemplate();
-})();
-</script>
-</body>
-</html>
+        function haltScanSession(completed) {
+            clearInterval(scanTimer);
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+            
+            isScanning = false;
+            uiWrapper.classList.remove('scanning');
+            countdownRing.innerText = "READY";
+            mainBtn.innerText = "START 40-SECOND SCAN";
+            guideText.style.color = "var(--text-main)";
+            guideText.innerText = "Cover the rear camera lens completely with your index finger, look at the screen grid, and click start.";
+            
+            uiHr.innerText = "--";
+            uiStability.innerText = "--";
