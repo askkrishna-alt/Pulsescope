@@ -1,287 +1,1099 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neuro-Symbolic Autonomic Vitality Scan</title>
-    <style>
-        :root {
-            --bg-dark: #0F172A;
-            --bg-card: #1E293B;
-            --mint: #10B981;
-            --emerald: #059669;
-            --amber: #D97706;
-            --coral: #DC2626;
-            --text-main: #F8FAFC;
-            --text-muted: #94A3B8;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Autonomic Vitality Scan</title>
+<style>
+    :root {
+        --bg-dark: #0F172A;
+        --bg-card: #1E293B;
+        --bg-card-2: #16213A;
+        --mint: #10B981;
+        --emerald: #059669;
+        --amber: #D97706;
+        --coral: #DC2626;
+        --text-main: #F8FAFC;
+        --text-muted: #94A3B8;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; padding: 0;
+        background-color: var(--bg-dark);
+        color: var(--text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        display: flex; justify-content: center;
+    }
+    .app-container { width: 100%; max-width: 480px; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+    .header { text-align: center; font-size: 13px; letter-spacing: 2px; color: var(--text-muted); text-transform: uppercase; margin: 0; }
+    .disclaimer {
+        font-size: 11px; line-height: 1.5; color: var(--text-muted);
+        background: var(--bg-card-2); border: 1px solid #334155; border-radius: 10px; padding: 10px 12px;
+    }
+    .card { background-color: var(--bg-card); border-radius: 16px; padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+    .card-title { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); margin: 0 0 2px 0; }
+    .guide-box { text-align: center; font-size: 15px; line-height: 1.5; color: #E2E8F0; min-height: 40px; }
+    .ring-container { display: flex; justify-content: center; align-items: center; margin: 4px 0; }
+    .scan-ring {
+        width: 160px; height: 160px; border-radius: 50%;
+        background-color: var(--bg-card); border: 4px solid var(--text-muted);
+        display: flex; flex-direction: column; justify-content: center; align-items: center;
+        font-size: 24px; font-weight: bold; font-family: monospace;
+        transition: all 0.5s ease-in-out;
+    }
+    .scan-ring .sub { font-size: 10px; font-weight: normal; color: var(--text-muted); margin-top: 4px; letter-spacing: 1px; text-align: center; padding: 0 10px; }
+    .scanning .scan-ring { border-color: var(--mint); animation: breathe 5s infinite ease-in-out; }
+    @keyframes breathe {
+        0% { transform: scale(1); box-shadow: 0 0 20px 2px rgba(16,185,129,0.2); }
+        50% { transform: scale(1.1); box-shadow: 0 0 40px 10px rgba(16,185,129,0.5); }
+        100% { transform: scale(1); box-shadow: 0 0 20px 2px rgba(16,185,129,0.2); }
+    }
+    .telemetry-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+    .telemetry-label { color: var(--text-muted); }
+    .telemetry-value { font-weight: bold; font-family: monospace; }
+    .divider { height: 1px; background-color: #334155; margin: 0; }
 
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: var(--bg-dark);
-            color: var(--text-main);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
+    .mode-row { display: flex; gap: 10px; }
+    .mode-btn {
+        flex: 1; background: var(--bg-card-2); color: var(--text-muted); border: 1px solid #334155;
+        border-radius: 10px; padding: 10px; font-size: 12px; font-weight: bold; letter-spacing: 0.4px; cursor: pointer;
+    }
+    .mode-btn.selected { border-color: var(--mint); color: var(--text-main); background: rgba(16,185,129,0.12); }
+    .mode-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .app-container {
-            width: 100%;
-            max-width: 480px;
-            background-color: var(--bg-dark);
-            padding: 24px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
+    .action-btn {
+        background-color: var(--mint); color: white; border: none; border-radius: 12px;
+        height: 54px; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; cursor: pointer;
+    }
+    .scanning .action-btn, .action-btn.stop { background-color: var(--coral); }
+    .action-btn:disabled { background-color: #334155; cursor: not-allowed; }
+    .action-btn.secondary { background-color: #334155; }
 
-        .header {
-            text-align: center;
-            font-size: 14px;
-            letter-spacing: 2px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            margin: 0;
-        }
+    .confidence-badge {
+        display: inline-block; font-size: 10px; font-weight: bold; letter-spacing: 0.5px;
+        padding: 4px 8px; border-radius: 6px; text-transform: uppercase;
+    }
+    .conf-very-low { background: rgba(220,38,38,0.2); color: #FCA5A5; }
+    .conf-low { background: rgba(217,119,6,0.2); color: #FCD34D; }
+    .conf-moderate { background: rgba(217,119,6,0.15); color: #FDE68A; }
+    .conf-standard { background: rgba(16,185,129,0.2); color: #6EE7B7; }
 
-        .guide-box {
-            text-align: center;
-            font-size: 16px;
-            line-height: 1.5;
-            color: #E2E8F0;
-            min-height: 48px;
-        }
+    #spectrum-canvas { width: 100%; height: 150px; display: block; }
+    .band-legend { display: flex; gap: 16px; font-size: 11px; color: var(--text-muted); }
+    .band-legend span.dot { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align: middle; }
 
-        .ring-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 20px 0;
-        }
+    .balance-bar { display: flex; height: 26px; border-radius: 8px; overflow: hidden; }
+    .balance-bar .lf-fill { background: var(--amber); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:bold; color:#1E1B10; }
+    .balance-bar .hf-fill { background: var(--mint); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:bold; color:#062D22; }
 
-        .scan-ring {
-            width: 180px;
-            height: 180px;
-            border-radius: 50%;
-            background-color: var(--bg-card);
-            border: 4px solid var(--text-muted);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 28px;
-            font-weight: bold;
-            font-family: monospace;
-            transition: all 0.5s ease-in-out;
-            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-        }
+    .breathing-card { display:flex; align-items:center; justify-content:space-between; background: var(--bg-card-2); border-radius: 12px; padding: 14px 16px; }
+    .breathing-bpm { font-size: 26px; font-weight: bold; font-family: monospace; }
+    .breathing-badge { font-size: 10px; font-weight: bold; padding: 4px 8px; border-radius: 6px; text-transform: uppercase; }
+    .badge-slow { background: rgba(16,185,129,0.2); color:#6EE7B7; }
+    .badge-normal { background: rgba(148,163,184,0.2); color:#CBD5E1; }
+    .badge-fast { background: rgba(217,119,6,0.2); color:#FCD34D; }
 
-        .scanning .scan-ring {
-            border-color: var(--mint);
-            animation: breathe 5s infinite ease-in-out;
-        }
+    .touchpad-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .touchpad-label { font-size: 12px; color: var(--text-muted); text-align: center; }
+    .touchpad {
+        width: 100%; max-width: 300px; height: 110px;
+        background: linear-gradient(145deg, #16213A, #1E293B);
+        border: 1px dashed #334155; border-radius: 14px;
+        display: flex; align-items: center; justify-content: center;
+        color: var(--text-muted); font-size: 13px; touch-action: none; user-select: none;
+    }
+    .touchpad.active { border-color: var(--mint); border-style: solid; color: var(--text-main); }
 
-        @keyframes breathe {
-            0% { transform: scale(1); box-shadow: 0 0 20px 2px rgba(16, 185, 129, 0.2); }
-            50% { transform: scale(1.15); box-shadow: 0 0 40px 10px rgba(16, 185, 129, 0.5); }
-            100% { transform: scale(1); box-shadow: 0 0 20px 2px rgba(16, 185, 129, 0.2); }
-        }
+    #webcam-stream, #proc-canvas, #pupil-video { display: none; }
 
-        .telemetry-panel {
-            background-color: var(--bg-card);
-            border-radius: 16px;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
+    #pupil-trace-canvas { width: 100%; height: 90px; display: block; }
 
-        .telemetry-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 14px;
-        }
+    .flash-overlay {
+        position: fixed; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 200;
+    }
 
-        .telemetry-label { color: var(--text-muted); }
-        .telemetry-value { font-weight: bold; }
-
-        .divider {
-            height: 1px;
-            background-color: #334155;
-            margin: 0;
-        }
-
-        .action-btn {
-            background-color: var(--mint);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            height: 56px;
-            font-size: 15px;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-        }
-
-        .action-btn:hover { background-color: var(--emerald); }
-        .scanning .action-btn { background-color: var(--coral); }
-
-        /* Hidden components for processing */
-        #webcam-stream { display: none; }
-
-        /* Modal styling for dashboard findings */
-        .modal {
-            display: none;
-            position: fixed;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 100%;
-            max-width: 480px;
-            background-color: var(--bg-card);
-            border-top-left-radius: 24px;
-            border-top-right-radius: 24px;
-            padding: 24px;
-            box-sizing: border-box;
-            box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
-            z-index: 100;
-        }
-    </style>
+    .modal {
+        display: none; position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+        width: 100%; max-width: 480px; background-color: var(--bg-card);
+        border-top-left-radius: 24px; border-top-right-radius: 24px;
+        padding: 24px; box-shadow: 0 -10px 25px rgba(0,0,0,0.5); z-index: 100;
+        max-height: 90vh; overflow-y: auto;
+    }
+</style>
 </head>
 <body>
 
-    <div class="app-container" id="app-wrapper">
-        <h1 class="header">Autonomic Vitality Engine</h1>
-        
+<div class="app-container" id="app-wrapper">
+    <h1 class="header">Autonomic Vitality Engine</h1>
+
+    <div class="disclaimer">
+        Consumer-grade wellness estimates, not a medical device and not FDA cleared. Values are derived
+        from camera photoplethysmography, touch pressure, and (optional) front-camera eye tracking.
+        Do not use for diagnosis; consult a clinician for any health concern. The LF/HF ratio's validity
+        as a direct "sympathovagal balance" index is actively debated in current HRV research — treat it
+        as a descriptive spectral ratio, not a definitive readout of nervous system state.
+    </div>
+
+    <!-- ===================== PULSE / HRV CARD ===================== -->
+    <div class="card">
+        <p class="card-title">Pulse &amp; Heart Rate Variability</p>
+
         <div class="guide-box" id="guide-text">
-            Cover the rear camera lens completely with your index finger, look at the screen grid, and click start.
+            Cover the rear camera and flash completely with your fingertip, hold still, and choose a capture mode.
+        </div>
+
+        <div class="mode-row" id="mode-row">
+            <button class="mode-btn selected" id="mode-30s" onclick="selectMode('fixed30')">30-SECOND SCAN</button>
+            <button class="mode-btn" id="mode-cont" onclick="selectMode('continuous')">CONTINUOUS CAPTURE</button>
         </div>
 
         <div class="ring-container">
-            <div class="scan-ring" id="countdown-ring">READY</div>
-        </div>
-
-        <div class="telemetry-panel">
-            <div class="telemetry-row">
-                <span class="telemetry-label">🫀 Live Pulse</span>
-                <span class="telemetry-value" id="val-hr">--</span>
-            </div>
-            <div class="divider"></div>
-            <div class="telemetry-row">
-                <span class="telemetry-label">📈 Signal Quality</span>
-                <span class="telemetry-value" id="val-stability">--</span>
-            </div>
-            <div class="divider"></div>
-            <div class="telemetry-row">
-                <span class="telemetry-label">👁️ Pupil Lock Status</span>
-                <span class="telemetry-value" id="val-pupil">OFFLINE</span>
+            <div class="scan-ring" id="countdown-ring">
+                <span id="ring-main">READY</span>
+                <span class="sub" id="ring-sub"></span>
             </div>
         </div>
 
-        <button class="action-btn" id="main-btn" onclick="toggleScanState()">START 40-SECOND SCAN</button>
-        
-        <!-- Video pipeline canvas for mathematical pixel analysis -->
-        <video id="webcam-stream" autoplay playsinline></video>
+        <div class="telemetry-row">
+            <span class="telemetry-label">🫀 Live Pulse</span>
+            <span class="telemetry-value" id="val-hr">--</span>
+        </div>
+        <div class="divider"></div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">📈 Signal Quality</span>
+            <span class="telemetry-value" id="val-stability">--</span>
+        </div>
+        <div class="divider"></div>
+        <div class="telemetry-row">
+            <span class="telemetry-label">🫁 Respiration (spectral)</span>
+            <span class="telemetry-value" id="val-rr">--</span>
+        </div>
+
+        <button class="action-btn" id="main-btn" onclick="toggleScanState()">START 30-SECOND SCAN</button>
     </div>
 
-    <!-- Results Panel Layer -->
-    <div class="modal" id="results-modal">
-        <h2 id="modal-status-title" style="margin-top:0; font-size: 20px;"></h2>
-        <p id="modal-log-text" style="color: var(--text-muted); font-size: 14px; line-height: 1.4;"></p>
-        
-        <div style="margin: 20px 0; display:flex; flex-direction:column; gap:10px;" id="modal-metrics-box"></div>
-        
-        <div id="modal-action-card" style="padding:16px; border-radius:12px; font-size:13px; line-height:1.4; color:white; margin-bottom:20px;"></div>
-        <button class="action-btn" style="width:100%;" onclick="closeDashboard()">DISMISS DATA</button>
+    <!-- ===================== FREQUENCY DOMAIN CARD ===================== -->
+    <div class="card" id="freq-card" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <p class="card-title" style="margin:0;">Frequency-Domain HRV</p>
+            <span class="confidence-badge conf-very-low" id="confidence-badge">--</span>
+        </div>
+
+        <canvas id="spectrum-canvas"></canvas>
+        <div class="band-legend">
+            <span><span class="dot" style="background:var(--amber);"></span>LF 0.04–0.15 Hz</span>
+            <span><span class="dot" style="background:var(--mint);"></span>HF 0.15–0.40 Hz</span>
+        </div>
+
+        <div class="telemetry-row"><span class="telemetry-label">LF Power</span><span class="telemetry-value" id="val-lf">--</span></div>
+        <div class="telemetry-row"><span class="telemetry-label">HF Power</span><span class="telemetry-value" id="val-hf">--</span></div>
+        <div class="telemetry-row"><span class="telemetry-label">VLF Power</span><span class="telemetry-value" id="val-vlf">--</span></div>
+        <div class="telemetry-row"><span class="telemetry-label">LF/HF Ratio</span><span class="telemetry-value" id="val-lfhf">--</span></div>
+
+        <div class="balance-bar" id="balance-bar">
+            <div class="lf-fill" id="lf-fill" style="width:50%;">LF --%</div>
+            <div class="hf-fill" id="hf-fill" style="width:50%;">HF --%</div>
+        </div>
+
+        <div class="breathing-card">
+            <div>
+                <div class="telemetry-label" style="font-size:11px;">Breathing Rate</div>
+                <div class="breathing-bpm" id="breathing-bpm">-- bpm</div>
+            </div>
+            <span class="breathing-badge badge-normal" id="breathing-badge">--</span>
+        </div>
     </div>
 
-    <script>
-        let isScanning = false;
-        let scanTimer = null;
-        let secondsRemaining = 40;
-        let mediaStream = null;
+    <!-- ===================== GRIP CARD ===================== -->
+    <div class="card">
+        <p class="card-title">Touch Pressure (Grip Stability)</p>
+        <div class="touchpad-wrap">
+            <div class="touchpad-label">Rest a fingertip here during the scan — tracks touch pressure &amp; contact-area stability. This is NOT a sweat/sudomotor sensor; a touchscreen cannot sense skin conductance.</div>
+            <div class="touchpad" id="touchpad">Grip pad — <span id="grip-live">idle</span></div>
+        </div>
+    </div>
 
-        const uiWrapper = document.getElementById('app-wrapper');
-        const guideText = document.getElementById('guide-text');
-        const countdownRing = document.getElementById('countdown-ring');
-        const mainBtn = document.getElementById('main-btn');
-        const resultsModal = document.getElementById('results-modal');
+    <!-- ===================== EYE RESPONSE CARD ===================== -->
+    <div class="card">
+        <p class="card-title">Eye Response (Optional, Front Camera)</p>
+        <div class="guide-box" id="pupil-status" style="font-size:13px;">
+            Real iris tracking via on-device face landmark detection. Uses the front camera — run this
+            separately from the finger scan, since most phones only support one active camera at a time.
+        </div>
+        <canvas id="pupil-trace-canvas"></canvas>
+        <div id="pupil-result" style="font-size:12px; color: var(--text-muted);"></div>
+        <button class="action-btn secondary" id="pupil-btn" onclick="startEyeResponseTest()">RUN 6-SECOND EYE RESPONSE TEST</button>
+        <video id="pupil-video" autoplay playsinline muted></video>
+    </div>
 
-        // Web Telemetry Elements
-        const uiHr = document.getElementById('val-hr');
-        const uiStability = document.getElementById('val-stability');
-        const uiPupil = document.getElementById('val-pupil');
+    <button class="action-btn" style="background-color:#334155;" onclick="openFullReport()">VIEW FULL REPORT</button>
 
-        function toggleScanState() {
-            if (!isScanning) {
-                initializeBrowserCamera();
+    <video id="webcam-stream" autoplay playsinline muted></video>
+    <canvas id="proc-canvas" width="40" height="40"></canvas>
+</div>
+
+<div class="flash-overlay" id="flash-overlay"></div>
+
+<div class="modal" id="results-modal">
+    <h2 id="modal-status-title" style="margin-top:0; font-size: 20px;"></h2>
+    <p id="modal-log-text" style="color: var(--text-muted); font-size: 13px; line-height: 1.4;"></p>
+    <div style="margin: 14px 0; display:flex; flex-direction:column; gap:10px;" id="modal-metrics-box"></div>
+    <div id="modal-action-card" style="padding:16px; border-radius:12px; font-size:13px; line-height:1.4; color:white; margin-bottom:16px;"></div>
+    <p style="color: var(--text-muted); font-size: 11px; line-height: 1.4;">
+        Estimates from optical, touch, and (if run) eye-tracking signals; not diagnostic and not a
+        substitute for clinical HRV equipment. Consult a clinician for any health concern.
+    </p>
+    <button class="action-btn" style="width:100%;" onclick="closeDashboard()">DISMISS DATA</button>
+</div>
+
+<script>
+/* ================================================================
+   SECTION 0 — SHARED DSP UTILITIES
+   (natural cubic spline, FFT, Welch PSD, band integration)
+   ================================================================ */
+
+function nextPow2(n) { let p = 1; while (p < n) p *= 2; return p; }
+
+function hanningWindow(N) {
+    if (N <= 1) return [1];
+    const w = new Array(N);
+    for (let i = 0; i < N; i++) w[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (N - 1)));
+    return w;
+}
+
+// Iterative radix-2 Cooley-Tukey FFT, in place. re/im must be power-of-2 length.
+function fftInPlace(re, im) {
+    const n = re.length;
+    for (let i = 1, j = 0; i < n; i++) {
+        let bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) {
+            [re[i], re[j]] = [re[j], re[i]];
+            [im[i], im[j]] = [im[j], im[i]];
+        }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+        const ang = -2 * Math.PI / len;
+        const wr0 = Math.cos(ang), wi0 = Math.sin(ang);
+        for (let i = 0; i < n; i += len) {
+            let curWr = 1, curWi = 0;
+            for (let k = 0; k < len / 2; k++) {
+                const uRe = re[i + k], uIm = im[i + k];
+                const vRe = re[i + k + len / 2] * curWr - im[i + k + len / 2] * curWi;
+                const vIm = re[i + k + len / 2] * curWi + im[i + k + len / 2] * curWr;
+                re[i + k] = uRe + vRe; im[i + k] = uIm + vIm;
+                re[i + k + len / 2] = uRe - vRe; im[i + k + len / 2] = uIm - vIm;
+                const nWr = curWr * wr0 - curWi * wi0;
+                const nWi = curWr * wi0 + curWi * wr0;
+                curWr = nWr; curWi = nWi;
+            }
+        }
+    }
+}
+
+// Natural cubic spline builder: returns an evaluator function y = spline(x).
+function buildNaturalCubicSpline(xs, ys) {
+    const n = xs.length;
+    if (n < 3) {
+        return function (xq) {
+            if (n === 0) return 0;
+            if (n === 1) return ys[0];
+            const t = (xq - xs[0]) / (xs[1] - xs[0]);
+            const tc = Math.max(0, Math.min(1, t));
+            return ys[0] + tc * (ys[1] - ys[0]);
+        };
+    }
+    const h = new Array(n - 1);
+    for (let i = 0; i < n - 1; i++) h[i] = xs[i + 1] - xs[i];
+
+    const alpha = new Array(n - 1).fill(0);
+    for (let i = 1; i < n - 1; i++) {
+        alpha[i] = (3 / h[i]) * (ys[i + 1] - ys[i]) - (3 / h[i - 1]) * (ys[i] - ys[i - 1]);
+    }
+    const l = new Array(n).fill(1);
+    const mu = new Array(n).fill(0);
+    const z = new Array(n).fill(0);
+    for (let i = 1; i < n - 1; i++) {
+        l[i] = 2 * (xs[i + 1] - xs[i - 1]) - h[i - 1] * mu[i - 1];
+        mu[i] = h[i] / l[i];
+        z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i];
+    }
+    const c = new Array(n).fill(0);
+    const b = new Array(n).fill(0);
+    const d = new Array(n).fill(0);
+    for (let j = n - 2; j >= 0; j--) {
+        c[j] = z[j] - mu[j] * c[j + 1];
+        b[j] = (ys[j + 1] - ys[j]) / h[j] - h[j] * (c[j + 1] + 2 * c[j]) / 3;
+        d[j] = (c[j + 1] - c[j]) / (3 * h[j]);
+    }
+    return function (xq) {
+        let xc = xq;
+        if (xc < xs[0]) xc = xs[0];
+        if (xc > xs[n - 1]) xc = xs[n - 1];
+        let lo = 0, hi = n - 2;
+        while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (xs[mid] <= xc) lo = mid; else hi = mid - 1;
+        }
+        const i = lo;
+        const dx = xc - xs[i];
+        return ys[i] + b[i] * dx + c[i] * dx * dx + d[i] * dx * dx * dx;
+    };
+}
+
+// Detrend (remove linear trend) then cubic-spline resample to uniform 4 Hz.
+function resampleToUniform4Hz(beatTimesSec, nnValuesMs) {
+    const n = beatTimesSec.length;
+    const meanT = beatTimesSec.reduce((a, b) => a + b, 0) / n;
+    const meanV = nnValuesMs.reduce((a, b) => a + b, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) {
+        num += (beatTimesSec[i] - meanT) * (nnValuesMs[i] - meanV);
+        den += (beatTimesSec[i] - meanT) ** 2;
+    }
+    const slope = den > 0 ? num / den : 0;
+    const intercept = meanV - slope * meanT;
+    const detrended = nnValuesMs.map((v, i) => v - (intercept + slope * beatTimesSec[i]));
+
+    const spline = buildNaturalCubicSpline(beatTimesSec, detrended);
+    const fs = 4;
+    const duration = beatTimesSec[n - 1] - beatTimesSec[0];
+    const numSamples = Math.max(0, Math.floor(duration * fs) + 1);
+    const uniform = new Array(numSamples);
+    for (let k = 0; k < numSamples; k++) {
+        uniform[k] = spline(beatTimesSec[0] + k / fs);
+    }
+    return { uniform, fs, duration };
+}
+
+// Welch's method: Hanning-windowed, 50%-overlap segments, zero-padded FFT.
+// Zero-padding increases plotted frequency resolution (smoother curve) but
+// does NOT increase the true statistical resolution of a short recording —
+// this is the "zero-padding" fallback explicitly allowed for ultra-short
+// windows, used instead of a from-scratch AR/Burg model to avoid shipping
+// an unverified spectral estimator in a health-adjacent tool.
+function computeWelchPSD(signal, fs) {
+    const N = signal.length;
+    if (N < 8) return null;
+
+    let segLen = Math.min(N, 128);
+    segLen = Math.max(segLen, Math.min(N, 16));
+    const overlapFrac = 0.5;
+    const hop = Math.max(1, Math.floor(segLen * (1 - overlapFrac)));
+    const nfft = nextPow2(Math.max(segLen, 256));
+    const window = hanningWindow(segLen);
+    let winPower = 0; for (const w of window) winPower += w * w;
+
+    const halfN = nfft / 2;
+    const psdAccum = new Array(halfN + 1).fill(0);
+    let segCount = 0;
+
+    for (let start = 0; start + segLen <= N; start += hop) {
+        const re = new Float64Array(nfft);
+        const im = new Float64Array(nfft);
+        for (let i = 0; i < segLen; i++) re[i] = signal[start + i] * window[i];
+        fftInPlace(re, im);
+        for (let k = 0; k <= halfN; k++) {
+            psdAccum[k] += (re[k] * re[k] + im[k] * im[k]) / (fs * winPower);
+        }
+        segCount++;
+    }
+    if (segCount === 0) {
+        const win2 = hanningWindow(N);
+        let wp2 = 0; for (const w of win2) wp2 += w * w;
+        const re = new Float64Array(nfft);
+        const im = new Float64Array(nfft);
+        for (let i = 0; i < N; i++) re[i] = signal[i] * win2[i];
+        fftInPlace(re, im);
+        for (let k = 0; k <= halfN; k++) psdAccum[k] = (re[k] * re[k] + im[k] * im[k]) / (fs * wp2);
+        segCount = 1;
+    }
+
+    const freqs = new Array(halfN + 1);
+    const psd = new Array(halfN + 1);
+    for (let k = 0; k <= halfN; k++) {
+        freqs[k] = k * fs / nfft;
+        let val = psdAccum[k] / segCount;
+        if (k !== 0 && k !== halfN) val *= 2; // one-sided spectrum scaling
+        psd[k] = val;
+    }
+    return { freqs, psd, segCount, segLen, nfft };
+}
+
+// Trapezoidal integration of PSD over [fLow, fHigh] -> band power (ms^2).
+function bandPower(freqs, psd, fLow, fHigh) {
+    let power = 0;
+    for (let k = 1; k < freqs.length; k++) {
+        const f0 = freqs[k - 1], f1 = freqs[k];
+        if (f1 < fLow || f0 > fHigh) continue;
+        const a = Math.max(f0, fLow), b = Math.min(f1, fHigh);
+        if (b <= a) continue;
+        const p0 = psd[k - 1] + (psd[k] - psd[k - 1]) * (a - f0) / (f1 - f0);
+        const p1 = psd[k - 1] + (psd[k] - psd[k - 1]) * (b - f0) / (f1 - f0);
+        power += (b - a) * (p0 + p1) / 2;
+    }
+    return power;
+}
+
+/* ================================================================
+   SECTION 1 — STATE & DOM REFS
+   ================================================================ */
+let scanMode = 'fixed30';
+let isScanning = false;
+let scanTimer = null;
+let liveAnalysisTimer = null;
+let autoStopTimer = null;
+let secondsRemaining = 30;
+let mediaStream = null;
+let rafId = null;
+
+const MIN_PEAK_GAP_MS = 300;
+const BASELINE_WINDOW_MS = 800;
+const CONTINUOUS_AUTO_STOP_MS = 10 * 60 * 1000; // 10 min safety cap
+
+let signalBuffer = [];   // {t, raw}
+let peakTimesMs = [];    // ms since scan start
+let lastPeakTimeMs = 0;
+let scanStartTime = 0;
+
+let touchSamples = [];
+let touchActive = false;
+
+let finalFreqResult = null;
+let finalTimeResult = null;
+let finalGripResult = null;
+let finalPupilResult = null;
+
+const uiWrapper = document.getElementById('app-wrapper');
+const guideText = document.getElementById('guide-text');
+const ringMain = document.getElementById('ring-main');
+const ringSub = document.getElementById('ring-sub');
+const mainBtn = document.getElementById('main-btn');
+const resultsModal = document.getElementById('results-modal');
+const uiHr = document.getElementById('val-hr');
+const uiStability = document.getElementById('val-stability');
+const uiRr = document.getElementById('val-rr');
+const video = document.getElementById('webcam-stream');
+const canvas = document.getElementById('proc-canvas');
+const ctxProc = canvas.getContext('2d', { willReadFrequently: true });
+const touchpad = document.getElementById('touchpad');
+const gripLive = document.getElementById('grip-live');
+const freqCard = document.getElementById('freq-card');
+const spectrumCanvas = document.getElementById('spectrum-canvas');
+const confidenceBadge = document.getElementById('confidence-badge');
+const modeRow = document.getElementById('mode-row');
+const mode30Btn = document.getElementById('mode-30s');
+const modeContBtn = document.getElementById('mode-cont');
+
+/* ================================================================
+   SECTION 2 — MODE SELECTION & MAIN CONTROL
+   ================================================================ */
+function selectMode(mode) {
+    if (isScanning) return;
+    scanMode = mode;
+    mode30Btn.classList.toggle('selected', mode === 'fixed30');
+    modeContBtn.classList.toggle('selected', mode === 'continuous');
+    mainBtn.innerText = mode === 'fixed30' ? 'START 30-SECOND SCAN' : 'START CONTINUOUS CAPTURE';
+}
+
+function toggleScanState() {
+    if (!isScanning) {
+        initializeBrowserCamera();
+    } else {
+        haltScanSession(true); // manual stop still analyzes whatever was captured
+    }
+}
+
+async function initializeBrowserCamera() {
+    try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" }, width: { ideal: 320 }, height: { ideal: 240 } },
+            audio: false
+        });
+        video.srcObject = mediaStream;
+        await video.play();
+        try {
+            const track = mediaStream.getVideoTracks()[0];
+            const caps = track.getCapabilities ? track.getCapabilities() : {};
+            if (caps.torch) await track.applyConstraints({ advanced: [{ torch: true }] });
+        } catch (torchErr) { /* torch optional */ }
+
+        executeScanSequence();
+    } catch (err) {
+        alert("Camera access denied or unavailable. This scan needs camera permission to read pulse signal.");
+    }
+}
+
+function executeScanSequence() {
+    isScanning = true;
+    scanStartTime = performance.now();
+    signalBuffer = []; peakTimesMs = []; lastPeakTimeMs = 0; touchSamples = [];
+    finalFreqResult = null; finalTimeResult = null; finalGripResult = null;
+
+    uiWrapper.classList.add('scanning');
+    modeRow.querySelectorAll('.mode-btn').forEach(b => b.disabled = true);
+    mainBtn.innerText = "CANCEL / STOP";
+    freqCard.style.display = 'none';
+
+    manageBreathingVisualPrompts();
+    startFrameSampling();
+
+    if (scanMode === 'fixed30') {
+        secondsRemaining = 30;
+        ringMain.innerText = secondsRemaining + "s";
+        ringSub.innerText = "reading signal...";
+        scanTimer = setInterval(() => {
+            if (secondsRemaining > 1) {
+                secondsRemaining--;
+                ringMain.innerText = secondsRemaining + "s";
+                updateLiveTelemetry();
+                manageBreathingVisualPrompts();
             } else {
-                haltScanSession(false);
+                haltScanSession(true);
             }
-        }
-
-        async function initializeBrowserCamera() {
-            try {
-                // Request access to device camera stream via WebRTC browser layers
-                mediaStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user" }, // Fallback to front lens for aggregate facial tracking
-                    audio: false 
-                });
-                document.getElementById('webcam-stream').srcObject = mediaStream;
-                executeScanSequence();
-            } catch (err) {
-                alert("Camera access denied. Browser biometrics requires explicit sensor permissions.");
-            }
-        }
-
-        function executeScanSequence() {
-            isScanning = true;
-            secondsRemaining = 40;
-            uiWrapper.classList.add('scanning');
-            mainBtn.innerText = "CANCEL ASSESSMENT";
-            uiPupil.innerText = "ACTIVE LOCK";
-            uiStability.innerText = "94%";
-
+        }, 1000);
+    } else {
+        let elapsed = 0;
+        ringMain.innerText = "0:00";
+        ringSub.innerText = "continuous...";
+        scanTimer = setInterval(() => {
+            elapsed++;
+            const mm = Math.floor(elapsed / 60), ss = elapsed % 60;
+            ringMain.innerText = mm + ":" + String(ss).padStart(2, '0');
+            updateLiveTelemetry();
             manageBreathingVisualPrompts();
+        }, 1000);
+        autoStopTimer = setTimeout(() => haltScanSession(true), CONTINUOUS_AUTO_STOP_MS);
+    }
 
-            scanTimer = setInterval(() => {
-                if (secondsRemaining > 1) {
-                    secondsRemaining--;
-                    countdownRing.innerText = secondsRemaining + "s";
-                    uiHr.innerText = (70 + Math.floor(Math.sin(secondsRemaining) * 3)) + " BPM";
-                    manageBreathingVisualPrompts();
-                } else {
-                    haltScanSession(true);
-                }
-            }, 1000);
+    // Live frequency-domain re-analysis every 5s once enough data exists.
+    liveAnalysisTimer = setInterval(() => {
+        const result = runFrequencyAnalysis();
+        if (result) renderFrequencyResult(result, true);
+    }, 5000);
+}
+
+function manageBreathingVisualPrompts() {
+    const phase = Math.floor(performance.now() / 1000) % 5;
+    guideText.innerText = phase >= 3
+        ? "Breathe in naturally... keep your fingertip still."
+        : "Exhale slowly... keep your fingertip still.";
+}
+
+function haltScanSession(completed) {
+    clearInterval(scanTimer);
+    clearInterval(liveAnalysisTimer);
+    clearTimeout(autoStopTimer);
+    stopFrameSampling();
+    if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+
+    isScanning = false;
+    uiWrapper.classList.remove('scanning');
+    modeRow.querySelectorAll('.mode-btn').forEach(b => b.disabled = false);
+    ringMain.innerText = "READY";
+    ringSub.innerText = "";
+    mainBtn.innerText = scanMode === 'fixed30' ? 'START 30-SECOND SCAN' : 'START CONTINUOUS CAPTURE';
+    guideText.innerText = "Cover the rear camera and flash completely with your fingertip, hold still, and choose a capture mode.";
+    uiHr.innerText = "--"; uiStability.innerText = "--"; uiRr.innerText = "--";
+
+    if (completed) {
+        finalTimeResult = computeTimeDomainHRV(peakTimesMs);
+        finalFreqResult = runFrequencyAnalysis();
+        finalGripResult = computeGripStability(touchSamples);
+        if (finalFreqResult) { freqCard.style.display = 'flex'; renderFrequencyResult(finalFreqResult, false); }
+    }
+}
+
+/* ================================================================
+   SECTION 3 — CAMERA FRAME SAMPLING (rPPG)
+   ================================================================ */
+function startFrameSampling() {
+    const loop = () => {
+        if (!isScanning) return;
+        try {
+            ctxProc.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const frame = ctxProc.getImageData(0, 0, canvas.width, canvas.height).data;
+            let sum = 0; const pixelCount = frame.length / 4;
+            for (let i = 0; i < frame.length; i += 4) sum += frame[i];
+            const meanRed = sum / pixelCount;
+            const t = performance.now() - scanStartTime;
+            signalBuffer.push({ t, raw: meanRed });
+
+            const cutoff = t - (BASELINE_WINDOW_MS + 600000); // keep up to 10 min of history
+            while (signalBuffer.length && signalBuffer[0].t < cutoff) signalBuffer.shift();
+
+            detectPeakIfAny(t);
+        } catch (e) { /* frame not ready */ }
+        rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+}
+function stopFrameSampling() { if (rafId) cancelAnimationFrame(rafId); rafId = null; }
+
+function detectPeakIfAny(tNow) {
+    const windowMs = 800;
+    const recent = signalBuffer.filter(s => s.t > tNow - windowMs);
+    if (recent.length < 5 || signalBuffer.length < 3) return;
+    const baseline = recent.reduce((a, s) => a + s.raw, 0) / recent.length;
+    const current = signalBuffer[signalBuffer.length - 1];
+    const prev = signalBuffer[signalBuffer.length - 2];
+    const prevPrev = signalBuffer[signalBuffer.length - 3];
+    const detrended = current.raw - baseline;
+    const prevDetrended = prev.raw - baseline;
+    const prevPrevDetrended = prevPrev.raw - baseline;
+    const isLocalMax = prevDetrended > prevPrevDetrended && prevDetrended > detrended && prevDetrended > 0.4;
+    if (isLocalMax && (prev.t - lastPeakTimeMs) > MIN_PEAK_GAP_MS) {
+        peakTimesMs.push(prev.t);
+        lastPeakTimeMs = prev.t;
+    }
+}
+
+function updateLiveTelemetry() {
+    const recentPeaks = peakTimesMs.slice(-6);
+    if (recentPeaks.length >= 2) {
+        const intervals = [];
+        for (let i = 1; i < recentPeaks.length; i++) intervals.push(recentPeaks[i] - recentPeaks[i - 1]);
+        const avgIbi = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        const bpm = Math.round(60000 / avgIbi);
+        if (bpm >= 35 && bpm <= 200) uiHr.innerText = bpm + " BPM";
+    }
+    if (recentPeaks.length >= 3) {
+        const intervals = [];
+        for (let i = 1; i < recentPeaks.length; i++) intervals.push(recentPeaks[i] - recentPeaks[i - 1]);
+        const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        const variance = intervals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / intervals.length;
+        const cv = Math.sqrt(variance) / mean;
+        uiStability.innerText = Math.max(0, Math.min(100, Math.round(100 - cv * 200))) + "%";
+    } else {
+        uiStability.innerText = "acquiring...";
+    }
+    updateGripLiveLabel();
+}
+
+/* ================================================================
+   SECTION 4 — TIME-DOMAIN HRV & GRIP METRIC
+   ================================================================ */
+function computeTimeDomainHRV(peaks) {
+    if (peaks.length < 3) return null;
+    const intervals = [];
+    for (let i = 1; i < peaks.length; i++) intervals.push(peaks[i] - peaks[i - 1]);
+    let sumSq = 0;
+    for (let i = 1; i < intervals.length; i++) { const d = intervals[i] - intervals[i - 1]; sumSq += d * d; }
+    const rmssd = Math.sqrt(sumSq / (intervals.length - 1));
+    const meanIbi = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    return { rmssd: Math.round(rmssd), avgBpm: Math.round(60000 / meanIbi), intervals };
+}
+
+touchpad.addEventListener('pointerdown', e => { touchActive = true; touchpad.classList.add('active'); recordTouchSample(e); });
+touchpad.addEventListener('pointermove', e => { if (touchActive) recordTouchSample(e); });
+touchpad.addEventListener('pointerup', () => { touchActive = false; touchpad.classList.remove('active'); });
+touchpad.addEventListener('pointercancel', () => { touchActive = false; touchpad.classList.remove('active'); });
+touchpad.addEventListener('pointerleave', () => { touchActive = false; touchpad.classList.remove('active'); });
+
+function recordTouchSample(e) {
+    const pressure = typeof e.pressure === 'number' ? e.pressure : 0;
+    const area = (e.width || 0) * (e.height || 0);
+    touchSamples.push({ t: performance.now(), pressure, area });
+    updateGripLiveLabel();
+}
+function updateGripLiveLabel() {
+    if (!isScanning) { gripLive.innerText = "idle"; return; }
+    gripLive.innerText = touchActive ? "contact detected" : "no contact";
+}
+function computeGripStability(samples) {
+    const pressures = samples.map(s => s.pressure).filter(p => p > 0);
+    if (pressures.length < 4) return null;
+    const mean = pressures.reduce((a, b) => a + b, 0) / pressures.length;
+    const variance = pressures.reduce((a, b) => a + (b - mean) * (b - mean), 0) / pressures.length;
+    const cv = mean > 0 ? Math.sqrt(variance) / mean : 1;
+    return { stabilityScore: Math.max(0, Math.min(100, Math.round(100 - cv * 150))), avgPressure: mean, samples: pressures.length };
+}
+
+/* ================================================================
+   SECTION 5 — FREQUENCY-DOMAIN HRV PIPELINE
+   ================================================================ */
+function runFrequencyAnalysis() {
+    if (peakTimesMs.length < 5) return null;
+    const beatTimesSec = [], nnMs = [];
+    for (let i = 1; i < peakTimesMs.length; i++) {
+        nnMs.push(peakTimesMs[i] - peakTimesMs[i - 1]);
+        beatTimesSec.push(peakTimesMs[i] / 1000);
+    }
+    const idx = [];
+    for (let i = 0; i < nnMs.length; i++) if (nnMs[i] >= 300 && nnMs[i] <= 2000) idx.push(i);
+    if (idx.length < 5) return null;
+    const cleanNN = idx.map(i => nnMs[i]);
+    const cleanT = idx.map(i => beatTimesSec[i]);
+
+    const { uniform, fs, duration } = resampleToUniform4Hz(cleanT, cleanNN);
+    if (uniform.length < 8) return null;
+
+    const welch = computeWelchPSD(uniform, fs);
+    if (!welch) return null;
+
+    const lf = bandPower(welch.freqs, welch.psd, 0.04, 0.15);
+    const hf = bandPower(welch.freqs, welch.psd, 0.15, 0.40);
+    const vlf = duration >= 180 ? bandPower(welch.freqs, welch.psd, 0.003, 0.04) : null;
+    const totalForNu = lf + hf;
+    const lfHfRatio = hf > 0.0001 ? lf / hf : null;
+    const lfNu = totalForNu > 0 ? (lf / totalForNu * 100) : null;
+    const hfNu = totalForNu > 0 ? (hf / totalForNu * 100) : null;
+
+    let peakIdx = -1, peakVal = -Infinity;
+    for (let k = 0; k < welch.freqs.length; k++) {
+        if (welch.freqs[k] >= 0.15 && welch.freqs[k] <= 0.40 && welch.psd[k] > peakVal) {
+            peakVal = welch.psd[k]; peakIdx = k;
+        }
+    }
+    const breathingHz = peakIdx >= 0 ? welch.freqs[peakIdx] : null;
+    const breathingBpm = breathingHz ? Math.round(breathingHz * 60) : null;
+
+    let confidenceTier, confidenceLabel;
+    if (duration < 60) { confidenceTier = 'very-low'; confidenceLabel = 'ULTRA-SHORT (<60s)'; }
+    else if (duration < 120) { confidenceTier = 'low'; confidenceLabel = 'SHORT (60-120s)'; }
+    else if (duration < 300) { confidenceTier = 'moderate'; confidenceLabel = 'BELOW 5-MIN STANDARD'; }
+    else { confidenceTier = 'standard'; confidenceLabel = 'STANDARD WINDOW'; }
+
+    return {
+        freqs: welch.freqs, psd: welch.psd, lf, hf, vlf, lfHfRatio, lfNu, hfNu,
+        breathingHz, breathingBpm, durationSec: duration, confidenceTier, confidenceLabel,
+        segCount: welch.segCount
+    };
+}
+
+function renderFrequencyResult(r, isLive) {
+    freqCard.style.display = 'flex';
+    drawSpectrumChart(spectrumCanvas, r.freqs, r.psd);
+
+    confidenceBadge.className = 'confidence-badge conf-' + r.confidenceTier;
+    confidenceBadge.innerText = r.confidenceLabel + (isLive ? ' · LIVE' : ' · FINAL');
+
+    document.getElementById('val-lf').innerText = r.lf.toFixed(1) + ' ms²';
+    document.getElementById('val-hf').innerText = r.hf.toFixed(1) + ' ms²';
+    document.getElementById('val-vlf').innerText = r.vlf !== null ? r.vlf.toFixed(1) + ' ms²' : 'N/A (needs ≥3 min)';
+    document.getElementById('val-lfhf').innerText = r.lfHfRatio !== null ? r.lfHfRatio.toFixed(2) : '--';
+
+    const lfPct = r.lfNu !== null ? r.lfNu : 50;
+    const hfPct = r.hfNu !== null ? r.hfNu : 50;
+    document.getElementById('lf-fill').style.width = lfPct + '%';
+    document.getElementById('hf-fill').style.width = hfPct + '%';
+    document.getElementById('lf-fill').innerText = 'LF ' + lfPct.toFixed(0) + '%';
+    document.getElementById('hf-fill').innerText = 'HF ' + hfPct.toFixed(0) + '%';
+
+    const bpmEl = document.getElementById('breathing-bpm');
+    const badgeEl = document.getElementById('breathing-badge');
+    if (r.breathingBpm) {
+        bpmEl.innerText = r.breathingBpm + ' bpm';
+        if (r.breathingBpm <= 10) { badgeEl.className = 'breathing-badge badge-slow'; badgeEl.innerText = 'Slow / calming'; }
+        else if (r.breathingBpm <= 20) { badgeEl.className = 'breathing-badge badge-normal'; badgeEl.innerText = 'Normal'; }
+        else { badgeEl.className = 'breathing-badge badge-fast'; badgeEl.innerText = 'Fast / shallow'; }
+        uiRr.innerText = r.breathingBpm + ' br/min';
+    } else {
+        bpmEl.innerText = '-- bpm';
+        badgeEl.className = 'breathing-badge badge-normal'; badgeEl.innerText = '--';
+    }
+}
+
+function drawSpectrumChart(canvasEl, freqs, psd) {
+    const c = canvasEl.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvasEl.clientWidth || 300;
+    const cssH = canvasEl.clientHeight || 150;
+    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, cssW, cssH);
+
+    const pad = { left: 34, right: 8, top: 8, bottom: 18 };
+    const plotW = cssW - pad.left - pad.right;
+    const plotH = cssH - pad.top - pad.bottom;
+    const maxFreq = 0.5;
+    const maxPsd = Math.max(...psd, 0.0001) * 1.15;
+
+    const xPix = f => pad.left + (f / maxFreq) * plotW;
+    const yPix = p => pad.top + plotH - (p / maxPsd) * plotH;
+
+    c.strokeStyle = '#334155'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(pad.left, pad.top); c.lineTo(pad.left, pad.top + plotH); c.lineTo(pad.left + plotW, pad.top + plotH); c.stroke();
+
+    c.fillStyle = '#94A3B8'; c.font = '9px monospace'; c.textAlign = 'center';
+    for (let f = 0; f <= 0.5 + 1e-9; f += 0.1) {
+        const x = xPix(f);
+        c.strokeStyle = '#334155';
+        c.beginPath(); c.moveTo(x, pad.top + plotH); c.lineTo(x, pad.top + plotH + 4); c.stroke();
+        c.fillText(f.toFixed(1), x, pad.top + plotH + 14);
+    }
+
+    function shadeBand(f0, f1, color) {
+        c.fillStyle = color;
+        c.beginPath();
+        c.moveTo(xPix(f0), pad.top + plotH);
+        for (let k = 0; k < freqs.length; k++) {
+            if (freqs[k] < f0 || freqs[k] > f1) continue;
+            c.lineTo(xPix(freqs[k]), yPix(psd[k]));
+        }
+        c.lineTo(xPix(f1), pad.top + plotH);
+        c.closePath(); c.fill();
+    }
+    shadeBand(0.04, 0.15, 'rgba(217,119,6,0.35)');
+    shadeBand(0.15, 0.40, 'rgba(16,185,129,0.35)');
+
+    c.strokeStyle = '#F8FAFC'; c.lineWidth = 1.4;
+    c.beginPath();
+    for (let k = 0; k < freqs.length; k++) {
+        if (freqs[k] > maxFreq) break;
+        const x = xPix(freqs[k]), y = yPix(psd[k]);
+        if (k === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+    c.stroke();
+
+    c.setLineDash([3, 3]); c.strokeStyle = '#64748B';
+    [0.04, 0.15, 0.40].forEach(f => {
+        const x = xPix(f);
+        c.beginPath(); c.moveTo(x, pad.top); c.lineTo(x, pad.top + plotH); c.stroke();
+    });
+    c.setLineDash([]);
+}
+
+/* ================================================================
+   SECTION 6 — EYE RESPONSE (REAL, MEDIAPIPE-BASED PUPIL TRACKING)
+   Uses the front camera + on-device face/iris landmark detection to track
+   a NORMALIZED relative iris-size index over time (iris diameter divided
+   by inter-ocular distance, to reduce sensitivity to camera distance).
+   This is NOT clinical pupillometry: absolute pupil diameter in mm is not
+   measured, only a relative, lighting- and camera-quality-dependent index.
+   Requires internet access on the end-user's device to load the model
+   from Google's CDN the first time.
+   ================================================================ */
+let faceLandmarker = null;
+let pupilStream = null;
+let pupilRunning = false;
+let pupilSamples = [];
+let pupilBaseline = null;
+let pupilStartTime = 0;
+
+const pupilVideo = document.getElementById('pupil-video');
+const pupilStatusEl = document.getElementById('pupil-status');
+const pupilResultEl = document.getElementById('pupil-result');
+const pupilTraceCanvas = document.getElementById('pupil-trace-canvas');
+const flashOverlay = document.getElementById('flash-overlay');
+
+async function loadFaceLandmarker() {
+    const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14");
+    const { FaceLandmarker, FilesetResolver } = vision;
+    const filesetResolver = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numFaces: 1
+    });
+}
+
+async function startEyeResponseTest() {
+    const btn = document.getElementById('pupil-btn');
+    btn.disabled = true;
+    try {
+        if (!faceLandmarker) {
+            pupilStatusEl.innerText = "Loading face-tracking model (first run only)...";
+            await loadFaceLandmarker();
+        }
+        pupilStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }, audio: false
+        });
+        pupilVideo.srcObject = pupilStream;
+        await pupilVideo.play();
+
+        pupilSamples = []; pupilBaseline = null; pupilRunning = true; pupilStartTime = performance.now();
+        pupilStatusEl.innerText = "Locating face...";
+        requestAnimationFrame(pupilLoop);
+
+        setTimeout(() => {
+            const baseVals = pupilSamples.filter(s => s.t < 2000).map(s => s.ratio);
+            if (baseVals.length > 3) pupilBaseline = baseVals.reduce((a, b) => a + b, 0) / baseVals.length;
+            triggerLightFlash();
+        }, 2000);
+
+        setTimeout(() => stopEyeResponseTest(), 6000);
+    } catch (err) {
+        pupilStatusEl.innerText = "Camera access denied, or the face-tracking model failed to load (needs internet access).";
+        btn.disabled = false;
+    }
+}
+
+function pupilLoop() {
+    if (!pupilRunning) return;
+    if (pupilVideo.readyState >= 2 && faceLandmarker) {
+        const result = faceLandmarker.detectForVideo(pupilVideo, performance.now());
+        if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
+            const lm = result.faceLandmarks[0];
+            const ratio = computePupilRatio(lm, pupilVideo.videoWidth, pupilVideo.videoHeight);
+            if (ratio) {
+                const t = performance.now() - pupilStartTime;
+                pupilSamples.push({ t, ratio });
+                pupilStatusEl.innerText = pupilBaseline
+                    ? "Tracking... " + ((ratio / pupilBaseline - 1) * 100).toFixed(1) + "% vs baseline"
+                    : "Tracking... acquiring baseline";
+            }
+        } else {
+            pupilStatusEl.innerText = "Face not detected — center your face in view with good, even lighting.";
+        }
+    }
+    if (pupilRunning) requestAnimationFrame(pupilLoop);
+}
+
+function computePupilRatio(landmarks, w, h) {
+    // Landmark indices for the 478-point MediaPipe face mesh with iris
+    // refinement. Iris points were appended after the base 468-point mesh:
+    // eye A iris = 468 (center) + 469-472 (boundary); eye B iris = 473 (center)
+    // + 474-477 (boundary). Outer eye corners for normalization: 33 and 263.
+    // Verify these indices against MediaPipe's landmark map if the library
+    // version changes — this layout has been stable since iris support
+    // shipped but isn't contractually guaranteed across major versions.
+    const px = i => ({ x: landmarks[i].x * w, y: landmarks[i].y * h });
+    const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+
+    const a469 = px(469), a471 = px(471), a470 = px(470), a472 = px(472);
+    const irisDiamA = (dist(a469, a471) + dist(a470, a472)) / 2;
+    const b474 = px(474), b476 = px(476), b475 = px(475), b477 = px(477);
+    const irisDiamB = (dist(b474, b476) + dist(b475, b477)) / 2;
+    const avgIrisDiam = (irisDiamA + irisDiamB) / 2;
+
+    const interocular = dist(px(33), px(263));
+    if (interocular <= 0) return null;
+    return avgIrisDiam / interocular;
+}
+
+function triggerLightFlash() {
+    flashOverlay.style.transition = 'none';
+    flashOverlay.style.opacity = '1';
+    requestAnimationFrame(() => {
+        flashOverlay.style.transition = 'opacity 1.2s ease-out';
+        flashOverlay.style.opacity = '0';
+    });
+}
+
+function stopEyeResponseTest() {
+    pupilRunning = false;
+    if (pupilStream) { pupilStream.getTracks().forEach(t => t.stop()); pupilStream = null; }
+    document.getElementById('pupil-btn').disabled = false;
+    renderPupilTrace();
+    summarizePupilResponse();
+}
+
+function renderPupilTrace() {
+    const c = pupilTraceCanvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = pupilTraceCanvas.clientWidth || 300;
+    const cssH = pupilTraceCanvas.clientHeight || 90;
+    pupilTraceCanvas.width = cssW * dpr; pupilTraceCanvas.height = cssH * dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, cssW, cssH);
+    if (pupilSamples.length < 2) return;
+
+    const pad = { left: 8, right: 8, top: 10, bottom: 10 };
+    const plotW = cssW - pad.left - pad.right;
+    const plotH = cssH - pad.top - pad.bottom;
+    const maxT = pupilSamples[pupilSamples.length - 1].t;
+    const ratios = pupilSamples.map(s => s.ratio);
+    const minR = Math.min(...ratios), maxR = Math.max(...ratios);
+    const range = Math.max(maxR - minR, 0.001);
+
+    const xPix = t => pad.left + (t / maxT) * plotW;
+    const yPix = r => pad.top + plotH - ((r - minR) / range) * plotH;
+
+    c.strokeStyle = '#10B981'; c.lineWidth = 1.6;
+    c.beginPath();
+    pupilSamples.forEach((s, i) => {
+        const x = xPix(s.t), y = yPix(s.ratio);
+        if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    });
+    c.stroke();
+
+    if (pupilBaseline !== null) {
+        c.strokeStyle = '#64748B'; c.setLineDash([3, 3]);
+        const y = yPix(pupilBaseline);
+        c.beginPath(); c.moveTo(pad.left, y); c.lineTo(pad.left + plotW, y); c.stroke();
+        c.setLineDash([]);
+    }
+}
+
+function summarizePupilResponse() {
+    if (!pupilBaseline || pupilSamples.length < 5) {
+        pupilResultEl.innerText = "Not enough signal captured. Retry with your face well-lit and centered in frame.";
+        finalPupilResult = null;
+        return;
+    }
+    const minRatio = Math.min(...pupilSamples.map(s => s.ratio));
+    const constrictionPct = ((pupilBaseline - minRatio) / pupilBaseline) * 100;
+    finalPupilResult = { baseline: pupilBaseline, constrictionPct, sampleCount: pupilSamples.length };
+    pupilResultEl.innerText = `Baseline-relative iris constriction observed: ${constrictionPct.toFixed(1)}% ` +
+        `(approximate, camera-based index — not clinical pupillometry).`;
+}
+
+/* ================================================================
+   SECTION 7 — FULL REPORT
+   ================================================================ */
+function openFullReport() {
+    const rows = [];
+    let title = 'SCAN INCOMPLETE';
+    let titleColor = 'var(--coral)';
+    let actionText = 'Run at least the pulse scan to generate a report.';
+    let logText = 'No completed pulse scan found yet.';
+
+    if (finalTimeResult) {
+        let sympatheticScore;
+        if (finalFreqResult && finalFreqResult.hfNu !== null) {
+            sympatheticScore = Math.round(100 - finalFreqResult.hfNu);
+        } else {
+            sympatheticScore = Math.max(0, Math.min(100, Math.round(100 - finalTimeResult.rmssd)));
         }
 
-        function manageBreathingVisualPrompts() {
-            // Alternate breathing prompt vectors every 2.5 seconds inside the 5s loop
-            if (secondsRemaining % 5 >= 3) {
-                guideText.innerText = "Breathe in naturally...";
-            } else {
-                guideText.innerText = "Exhale slowly...";
-            }
+        if (sympatheticScore < 35) { title = 'PARASYMPATHETIC LEANING'; titleColor = 'var(--mint)'; actionText = 'Readings lean toward a calmer, rest-and-digest pattern.'; }
+        else if (sympatheticScore < 65) { title = 'BALANCED'; titleColor = 'var(--amber)'; actionText = 'Readings sit in a moderate range.'; }
+        else { title = 'SYMPATHETIC LEANING'; titleColor = 'var(--coral)'; actionText = 'Readings lean toward a more activated pattern. Slow, exhale-focused breathing may help.'; }
+
+        logText = 'Report compiled from ' + (finalFreqResult ? finalFreqResult.durationSec.toFixed(0) + 's of pulse data' : 'a short pulse capture') +
+            (finalGripResult ? ', touch contact data' : '') + (finalPupilResult ? ', and an eye response test.' : '.');
+
+        rows.push(['Average Heart Rate', finalTimeResult.avgBpm + ' BPM']);
+        rows.push(['Time-Domain HRV (RMSSD)', finalTimeResult.rmssd + ' ms']);
+
+        if (finalFreqResult) {
+            rows.push(['LF Power', finalFreqResult.lf.toFixed(1) + ' ms²']);
+            rows.push(['HF Power', finalFreqResult.hf.toFixed(1) + ' ms²']);
+            rows.push(['VLF Power', finalFreqResult.vlf !== null ? finalFreqResult.vlf.toFixed(1) + ' ms²' : 'N/A (needs ≥3 min)']);
+            rows.push(['LF/HF Ratio', finalFreqResult.lfHfRatio !== null ? finalFreqResult.lfHfRatio.toFixed(2) : '--']);
+            rows.push(['LFnu / HFnu', (finalFreqResult.lfNu !== null ? finalFreqResult.lfNu.toFixed(0) : '--') + '% / ' + (finalFreqResult.hfNu !== null ? finalFreqResult.hfNu.toFixed(0) : '--') + '%']);
+            rows.push(['Spectral Breathing Rate', finalFreqResult.breathingBpm ? finalFreqResult.breathingBpm + ' br/min' : '--']);
+            rows.push(['Analysis Confidence', finalFreqResult.confidenceLabel]);
+        } else {
+            rows.push(['Frequency-Domain HRV', 'Insufficient beats captured — scan longer for LF/HF']);
         }
 
-        function haltScanSession(completed) {
-            clearInterval(scanTimer);
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
-            }
-            
-            isScanning = false;
-            uiWrapper.classList.remove('scanning');
-            countdownRing.innerText = "READY";
-            mainBtn.innerText = "START 40-SECOND SCAN";
-            guideText.style.color = "var(--text-main)";
-            guideText.innerText = "Cover the rear camera lens completely with your index finger, look at the screen grid, and click start.";
-            
-            uiHr.innerText = "--";
-            uiStability.innerText = "--";
+        rows.push(['Grip Pressure Stability', finalGripResult ? finalGripResult.stabilityScore + '%' : 'no touch data captured']);
+        rows.push(['Eye Response (constriction)', finalPupilResult ? finalPupilResult.constrictionPct.toFixed(1) + '%' : 'not run']);
+    }
+
+    document.getElementById('modal-status-title').innerText = title;
+    document.getElementById('modal-status-title').style.color = titleColor;
+    document.getElementById('modal-log-text').innerText = logText;
+    document.getElementById('modal-metrics-box').innerHTML = rows.map(([label, value]) => `
+        <div class="telemetry-row"><span class="telemetry-label">${label}</span><span class="telemetry-value">${value}</span></div>
+        <div class="divider"></div>
+    `).join('').replace(/<div class="divider"><\/div>$/, '');
+
+    const actionCard = document.getElementById('modal-action-card');
+    actionCard.style.backgroundColor = titleColor;
+    actionCard.innerText = actionText;
+
+    resultsModal.style.display = 'block';
+}
+function closeDashboard() { resultsModal.style.display = 'none'; }
+</script>
+</body>
+</html>
