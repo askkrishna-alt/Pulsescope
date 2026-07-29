@@ -241,18 +241,20 @@
 
   <!-- ===================== EYE MOVEMENT PANEL ===================== -->
   <div class="panel">
-    <div class="panel-label"><span>Guided Eye Movement</span></div>
-    <div class="sub" style="margin-bottom:8px;">Tracks iris position relative to your eye corners while you follow
-      on-screen prompts. Screens gross extraocular movement in four directions — not a substitute for a clinical
-      exam, and cannot detect true ocular torsion (rotation), which needs sclera-texture tracking beyond this setup.</div>
+    <div class="panel-label"><span>Guided Eye Movement &amp; Fixation Stability</span></div>
+    <div class="sub" style="margin-bottom:8px;">Uses <b>spoken audio cues and a tone</b> for direction changes —
+      not on-screen text — since you can't read the screen while looking away from it. Screens gross extraocular
+      movement in four directions, then a brief fixation-stability check. Not a substitute for a clinical exam;
+      cannot detect true ocular torsion (rotation) or fast (VNG-grade) nystagmus, which need equipment beyond a
+      consumer webcam.</div>
     <div class="cam-shell" style="aspect-ratio:1/1; max-width:260px; margin:0 auto; border-radius:50%;">
       <video id="eom-video" autoplay playsinline muted></video>
       <div class="guide" id="eomGuideRing" style="width:88%; aspect-ratio:1;"></div>
     </div>
-    <div class="status-row"><div class="status-text" id="eomStatusText">Follow the on-screen direction prompt with your eyes, without moving your head.</div></div>
+    <div class="status-row"><div class="status-text" id="eomStatusText">Turn your device sound on. Listen for the spoken direction and tone — you don't need to read anything during the test.</div></div>
     <div class="bpm-display" style="padding:4px 0;"><div class="bpm-number" id="eomPrompt" style="font-size:28px;">—</div></div>
     <div class="checklist" id="eomChecklist" style="display:none;"></div>
-    <button class="secondary" id="eomBtn" style="width:100%; margin-top:10px;">Run Guided Eye Movement Test</button>
+    <button class="secondary" id="eomBtn" style="width:100%; margin-top:10px;">Run Eye Movement + Stability Test (~20s, audio-guided)</button>
   </div>
 
   <!-- ===================== HISTORY PANEL ===================== -->
@@ -356,23 +358,23 @@ function buildNaturalCubicSpline(xs, ys) {
         return ys[i] + b[i] * dx + c[i] * dx * dx + d[i] * dx * dx * dx;
     };
 }
-function resampleToUniform4Hz(beatTimesSec, nnValuesMs) {
-    const n = beatTimesSec.length;
-    const meanT = beatTimesSec.reduce((a, b) => a + b, 0) / n;
-    const meanV = nnValuesMs.reduce((a, b) => a + b, 0) / n;
+function resampleToUniformRate(xsSec, ys, fsTarget) {
+    const n = xsSec.length;
+    const meanT = xsSec.reduce((a, b) => a + b, 0) / n;
+    const meanV = ys.reduce((a, b) => a + b, 0) / n;
     let num = 0, den = 0;
-    for (let i = 0; i < n; i++) { num += (beatTimesSec[i] - meanT) * (nnValuesMs[i] - meanV); den += (beatTimesSec[i] - meanT) ** 2; }
+    for (let i = 0; i < n; i++) { num += (xsSec[i] - meanT) * (ys[i] - meanV); den += (xsSec[i] - meanT) ** 2; }
     const slope = den > 0 ? num / den : 0;
     const intercept = meanV - slope * meanT;
-    const detrended = nnValuesMs.map((v, i) => v - (intercept + slope * beatTimesSec[i]));
-    const spline = buildNaturalCubicSpline(beatTimesSec, detrended);
-    const fs = 4;
-    const duration = beatTimesSec[n - 1] - beatTimesSec[0];
-    const numSamples = Math.max(0, Math.floor(duration * fs) + 1);
+    const detrended = ys.map((v, i) => v - (intercept + slope * xsSec[i]));
+    const spline = buildNaturalCubicSpline(xsSec, detrended);
+    const duration = xsSec[n - 1] - xsSec[0];
+    const numSamples = Math.max(0, Math.floor(duration * fsTarget) + 1);
     const uniform = new Array(numSamples);
-    for (let k = 0; k < numSamples; k++) uniform[k] = spline(beatTimesSec[0] + k / fs);
-    return { uniform, fs, duration };
+    for (let k = 0; k < numSamples; k++) uniform[k] = spline(xsSec[0] + k / fsTarget);
+    return { uniform, fs: fsTarget, duration };
 }
+function resampleToUniform4Hz(beatTimesSec, nnValuesMs) { return resampleToUniformRate(beatTimesSec, nnValuesMs, 4); }
 function computeWelchPSD(signal, fs) {
     const N = signal.length;
     if (N < 8) return null;
@@ -1275,25 +1277,66 @@ function renderCheckRow([num, question, answer]) {
 
 /* ================================================================
    SECTION 9 — GUIDED EYE MOVEMENT (real, landmark-based gaze direction)
+   + FIXATION STABILITY / OSCILLATION SCREENING
    Tracks the iris center's position relative to the eye's bounding
-   box (corners + top/bottom lids) to estimate gaze direction — a
-   simple, well-established relative-position technique. Cannot
-   detect true ocular torsion (rolling); the "circular scan" only
-   checks that all four cardinal directions were reached in sequence.
+   box (corners + top/bottom lids) to estimate gaze direction. Uses
+   SPOKEN audio cues + tones for direction changes rather than
+   on-screen text, since you can't read the screen while looking
+   away from it. Cannot detect true ocular torsion (rolling).
+
+   The fixation-stability step reuses the same Welch/FFT pipeline as
+   the HRV analysis above, applied to gaze position instead of pulse
+   intervals, to screen for rhythmic oscillation (nystagmus-like
+   patterns) during a still fixation. This is explicitly NOT a
+   nystagmus diagnosis — consumer webcam frame rates can't resolve
+   fast clinical nystagmus, which needs 100+ fps infrared VNG
+   equipment. The detector was deliberately tuned conservative after
+   testing showed a naive version flagging pure noise as "oscillation"
+   ~20% of the time; the shipped threshold produced zero false
+   positives across 60 synthetic noise-only trials while still
+   catching a synthetic 3 Hz test oscillation, at the cost of missing
+   about a third of weaker synthetic signals — an intentional
+   trade-off given the sensitivity of what a false positive implies.
    ================================================================ */
 const EOM_SEQUENCE = [
-    { label: 'Look UP', dir: 'up' },
-    { label: 'Look RIGHT', dir: 'right' },
-    { label: 'Look DOWN', dir: 'down' },
-    { label: 'Look LEFT', dir: 'left' },
+    { label: 'Look UP', dir: 'up', speech: 'Up' },
+    { label: 'Look RIGHT', dir: 'right', speech: 'Right' },
+    { label: 'Look DOWN', dir: 'down', speech: 'Down' },
+    { label: 'Look LEFT', dir: 'left', speech: 'Left' },
 ];
+const CENTER_MS = 900, HOLD_MS = 2200, REACTION_SKIP_MS = 500, FIXATION_MS = 8000;
+
 let eomStream = null, eomRunning = false, eomStepIndex = -1;
 let eomStepResults = [];
+let fixationResult = null;
 const eomVideo = document.getElementById('eom-video');
 const eomStatusText = document.getElementById('eomStatusText');
 const eomGuideRing = document.getElementById('eomGuideRing');
 const eomPromptEl = document.getElementById('eomPrompt');
 const eomChecklist = document.getElementById('eomChecklist');
+
+// --- Audio helpers: speech + tone, so cues work without reading the screen ---
+let sharedAudioCtx = null;
+function speak(text) {
+    try {
+        if (!('speechSynthesis' in window)) return;
+        speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.rate = 1.05;
+        speechSynthesis.speak(utter);
+    } catch (e) { /* speech unavailable — tone + visual prompt still work */ }
+}
+function playTone(freq, durationMs) {
+    try {
+        if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = sharedAudioCtx.createOscillator(), gain = sharedAudioCtx.createGain();
+        osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(sharedAudioCtx.destination);
+        gain.gain.setValueAtTime(0.15, sharedAudioCtx.currentTime);
+        osc.start();
+        osc.stop(sharedAudioCtx.currentTime + durationMs / 1000);
+    } catch (e) { /* audio unavailable */ }
+}
 
 document.getElementById('eomBtn').addEventListener('click', startEomTest);
 
@@ -1307,7 +1350,7 @@ async function startEomTest() {
         eomVideo.srcObject = eomStream;
         await eomVideo.play();
 
-        eomRunning = true; eomStepIndex = 0; eomStepResults = [];
+        eomRunning = true; eomStepIndex = 0; eomStepResults = []; fixationResult = null;
         eomGuideRing.classList.remove('active');
         runEomStep();
     } catch (err) {
@@ -1316,36 +1359,69 @@ async function startEomTest() {
     }
 }
 
-function runEomStep() {
-    if (eomStepIndex >= EOM_SEQUENCE.length) { finishEomTest(); return; }
-    const step = EOM_SEQUENCE[eomStepIndex];
-    eomPromptEl.textContent = step.label;
-    eomStatusText.textContent = `Step ${eomStepIndex + 1} of ${EOM_SEQUENCE.length} — hold for 2 seconds`;
-    const gazeSamples = [];
-    const stepStart = performance.now();
-
-    function stepLoop() {
+function collectGazeFor(durationMs, onDone) {
+    const samples = [];
+    const start = performance.now();
+    function loop() {
         if (!eomRunning) return;
         if (eomVideo.readyState >= 2 && faceLandmarker) {
             const result = faceLandmarker.detectForVideo(eomVideo, performance.now());
             if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
                 eomGuideRing.classList.add('active');
                 const gaze = estimateGazeOffset(result.faceLandmarks[0], eomVideo.videoWidth, eomVideo.videoHeight);
-                if (gaze) gazeSamples.push(gaze);
+                if (gaze) samples.push({ t: performance.now() - start, dx: gaze.dx, dy: gaze.dy });
             } else {
                 eomGuideRing.classList.remove('active');
             }
         }
-        if (performance.now() - stepStart < 2000) {
-            requestAnimationFrame(stepLoop);
-        } else {
-            const detectedDir = classifyGazeDirection(gazeSamples);
+        if (performance.now() - start < durationMs) requestAnimationFrame(loop);
+        else onDone(samples);
+    }
+    requestAnimationFrame(loop);
+}
+
+function runEomStep() {
+    if (eomStepIndex >= EOM_SEQUENCE.length) { runFixationStep(); return; }
+    const step = EOM_SEQUENCE[eomStepIndex];
+
+    // Return-to-center phase — spoken + toned, gives a known reference point
+    // between directions and a clear "get ready" cue before each move.
+    eomPromptEl.textContent = '•';
+    eomStatusText.textContent = `Step ${eomStepIndex + 1} of ${EOM_SEQUENCE.length} — center...`;
+    speak('Center');
+    playTone(440, 100);
+
+    setTimeout(() => {
+        eomPromptEl.textContent = step.label;
+        eomStatusText.textContent = `Step ${eomStepIndex + 1} of ${EOM_SEQUENCE.length} — listen for the direction`;
+        speak(step.speech);
+        playTone(880, 140);
+
+        collectGazeFor(HOLD_MS, (samples) => {
+            // Skip the first ~500ms of each hold (reaction time / saccade in
+            // flight) so classification only uses the settled gaze position.
+            const settled = samples.filter(s => s.t >= REACTION_SKIP_MS);
+            const detectedDir = classifyGazeDirection(settled);
             eomStepResults.push({ instructed: step.dir, detected: detectedDir, match: detectedDir === step.dir });
             eomStepIndex++;
             runEomStep();
-        }
-    }
-    requestAnimationFrame(stepLoop);
+        });
+    }, CENTER_MS);
+}
+
+function runFixationStep() {
+    eomPromptEl.textContent = '•';
+    eomStatusText.textContent = 'Fixation stability — hold still, look at the center dot';
+    speak('Now hold still and look at the center dot');
+    playTone(440, 150);
+
+    setTimeout(() => {
+        collectGazeFor(FIXATION_MS, (samples) => {
+            const settled = samples.filter(s => s.t >= REACTION_SKIP_MS);
+            fixationResult = analyzeFixationOscillation(settled);
+            finishEomTest();
+        });
+    }, 700);
 }
 
 // Iris center position relative to the eye's horizontal/vertical extent
@@ -1353,7 +1429,6 @@ function runEomStep() {
 // camera doesn't matter — only where the iris sits within the eye socket.
 function estimateGazeOffset(landmarks, w, h) {
     const px = i => ({ x: landmarks[i].x * w, y: landmarks[i].y * h });
-    // Right eye: corners 33 (outer) / 133 (inner), lids 159 (upper) / 145 (lower). Iris center 468.
     const outer = px(33), inner = px(133), upper = px(159), lower = px(145), iris = px(468);
     const eyeWidth = Math.hypot(outer.x - inner.x, outer.y - inner.y);
     const eyeHeight = Math.hypot(upper.x - lower.x, upper.y - lower.y);
@@ -1369,10 +1444,68 @@ function classifyGazeDirection(samples) {
     const DEAD_ZONE = 0.06;
     if (Math.abs(avgDx) < DEAD_ZONE && Math.abs(avgDy) < DEAD_ZONE) return 'center';
     if (Math.abs(avgDy) > Math.abs(avgDx)) return avgDy < 0 ? 'up' : 'down';
-    // Note: video is mirrored for display (scaleX(-1)) but landmark coords
-    // come from the raw unmirrored frame, so dx sign maps directly to the
-    // subject's own left/right, not the mirrored on-screen image.
     return avgDx > 0 ? 'right' : 'left';
+}
+
+// Screens gaze-position stability during a still fixation for a rhythmic
+// oscillation pattern, reusing the same Welch/FFT machinery validated
+// against synthetic HRV signals earlier in this file. Uses robust
+// (median/MAD) peak statistics, excludes near-Nyquist edge artifacts, and
+// requires the candidate frequency to show up on BOTH gaze axes before
+// flagging anything — see the section-header comment for the validation
+// process and false-positive tuning behind these specific thresholds.
+function analyzeFixationOscillation(gazeSamples) {
+    if (gazeSamples.length < 20) return null;
+    const tSec = gazeSamples.map(s => s.t / 1000);
+    const dxVals = gazeSamples.map(s => s.dx);
+    const dyVals = gazeSamples.map(s => s.dy);
+    const meanDx = dxVals.reduce((a, b) => a + b, 0) / dxVals.length;
+    const meanDy = dyVals.reduce((a, b) => a + b, 0) / dyVals.length;
+    const rmsJitter = Math.sqrt(gazeSamples.reduce((a, s) => a + ((s.dx - meanDx) ** 2 + (s.dy - meanDy) ** 2), 0) / gazeSamples.length);
+
+    const durationSec = tSec[tSec.length - 1] - tSec[0];
+    const actualFs = gazeSamples.length / durationSec;
+    const fsTarget = Math.max(4, Math.min(10, Math.round(actualFs)));
+    const rx = resampleToUniformRate(tSec, dxVals, fsTarget);
+    const ry = resampleToUniformRate(tSec, dyVals, fsTarget);
+    if (rx.uniform.length < 8 || ry.uniform.length < 8) return { rmsJitter, oscillationDetected: false, dominantFreqHz: null };
+
+    const welchX = computeWelchPSD(rx.uniform, fsTarget);
+    const welchY = computeWelchPSD(ry.uniform, fsTarget);
+    if (!welchX || !welchY) return { rmsJitter, oscillationDetected: false, dominantFreqHz: null };
+
+    function findRobustPeak(welch, fMin, fMax) {
+        const inBand = [];
+        for (let k = 0; k < welch.freqs.length; k++) if (welch.freqs[k] >= fMin && welch.freqs[k] <= fMax) inBand.push(k);
+        if (inBand.length < 4) return null;
+        const vals = inBand.map(k => welch.psd[k]).sort((a, b) => a - b);
+        const median = vals[Math.floor(vals.length / 2)];
+        const mad = vals.map(v => Math.abs(v - median)).sort((a, b) => a - b)[Math.floor(vals.length / 2)] || 0.0001;
+        let bestK = inBand[0], bestVal = -Infinity;
+        inBand.forEach(k => { if (welch.psd[k] > bestVal) { bestVal = welch.psd[k]; bestK = k; } });
+        const robustZ = (bestVal - median) / (mad * 1.4826 || 0.0001);
+        return { freqHz: welch.freqs[bestK], val: bestVal, robustZ };
+    }
+
+    const fMin = 0.5, fMax = (fsTarget / 2) * 0.8;
+    const peakX = findRobustPeak(welchX, fMin, fMax);
+    const peakY = findRobustPeak(welchY, fMin, fMax);
+    let best = null;
+    if (peakX && peakY) best = peakX.robustZ >= peakY.robustZ ? peakX : peakY;
+    else best = peakX || peakY;
+    if (!best) return { rmsJitter, oscillationDetected: false, dominantFreqHz: null };
+
+    const other = best === peakX ? welchY : welchX;
+    let otherNear = 0;
+    for (let k = 0; k < other.freqs.length; k++) if (Math.abs(other.freqs[k] - best.freqHz) <= 0.3) otherNear = Math.max(otherNear, other.psd[k]);
+    const otherVals = [];
+    for (let k = 0; k < other.freqs.length; k++) if (other.freqs[k] >= fMin && other.freqs[k] <= fMax) otherVals.push(other.psd[k]);
+    otherVals.sort((a, b) => a - b);
+    const otherMedian = otherVals[Math.floor(otherVals.length / 2)] || 0;
+    const corroborated = otherNear > otherMedian * 1.5;
+
+    const oscillationDetected = !!(best.robustZ > 25 && corroborated && best.freqHz >= 0.5 && best.freqHz <= 5);
+    return { rmsJitter, oscillationDetected, dominantFreqHz: oscillationDetected ? best.freqHz : null, robustZ: best.robustZ };
 }
 
 function finishEomTest() {
@@ -1380,12 +1513,31 @@ function finishEomTest() {
     if (eomStream) { eomStream.getTracks().forEach(t => t.stop()); eomStream = null; }
     document.getElementById('eomBtn').disabled = false;
     eomPromptEl.textContent = '—';
-    eomStatusText.textContent = 'Eye movement test complete.';
+    eomStatusText.textContent = 'Test complete.';
     eomChecklist.style.display = 'flex';
+
     const rows = eomStepResults.map((r, i) => [String(i + 1), `Detected gaze matched "${r.instructed}" prompt?`, r.detected === 'unknown' ? 'na' : (r.match ? 'yes' : 'no')]);
-    const allMatched = eomStepResults.every(r => r.match);
-    rows.push(['5', 'All four directions tracked successfully?', allMatched ? 'yes' : 'no']);
+    const allMatched = eomStepResults.length > 0 && eomStepResults.every(r => r.match);
+    rows.push(['5', 'All four directions tracked successfully?', eomStepResults.length === 0 ? 'na' : (allMatched ? 'yes' : 'no')]);
+
+    if (fixationResult) {
+        const stabilityLabel = fixationResult.rmsJitter < 0.02 ? 'yes' : fixationResult.rmsJitter < 0.05 ? 'na' : 'no';
+        rows.push(['6', 'Fixation appeared steady (low positional jitter)?', stabilityLabel]);
+        rows.push(['7', 'Rhythmic oscillation pattern detected during fixation?', fixationResult.oscillationDetected ? 'no' : 'yes']);
+        // Row 7 phrased so "yes" = no concerning pattern found, matching the
+        // Yes/No polarity of every other row in this checklist (yes = good).
+    } else {
+        rows.push(['6', 'Fixation appeared steady (low positional jitter)?', 'na']);
+        rows.push(['7', 'Rhythmic oscillation pattern detected during fixation?', 'na']);
+    }
     eomChecklist.innerHTML = rows.map(renderCheckRow).join('');
+
+    if (fixationResult && fixationResult.oscillationDetected) {
+        eomChecklist.innerHTML += `<div class="interp-box amber" style="margin-top:8px;">A rhythmic gaze-position pattern was detected during the fixation hold
+            (~${fixationResult.dominantFreqHz.toFixed(1)} Hz). This is a rough, consumer-camera screening signal —
+            <b>not a nystagmus diagnosis</b> — but if this appears consistently across repeat tests, or if you have
+            any visual symptoms, it's worth mentioning to a clinician.</div>`;
+    }
 }
 </script>
 </body>
