@@ -218,6 +218,8 @@
   <!-- ===================== PLR PANEL ===================== -->
   <div class="panel">
     <div class="panel-label"><span>Pupillary Light Reflex (PLR)</span></div>
+    <div class="sub" style="margin:-4px 0 4px;">"Right Eye" / "Left Eye" below refer to <b>your own</b> right and
+      left eye (not mirrored, i.e. not left/right as they appear in the on-screen preview).</div>
     <div class="cam-shell" style="aspect-ratio:1/1; max-width:260px; margin:0 auto; border-radius:50%;">
       <video id="pupil-video" autoplay playsinline muted></video>
       <div class="guide" id="eyeGuideRing" style="width:88%; aspect-ratio:1;"></div>
@@ -228,10 +230,13 @@
     <div class="metric-row" id="plrNumbers" style="display:none;">
       <div class="metric-card"><div class="m-label">Baseline Pupil</div><div class="m-value" id="plrBaselineMm">—</div><div class="m-sub">mm (est.)</div></div>
       <div class="metric-card"><div class="m-label">Min. Pupil (flash)</div><div class="m-value" id="plrMinMm">—</div><div class="m-sub">mm (est.)</div></div>
-      <div class="metric-card"><div class="m-label">Peak Constriction</div><div class="m-value" id="plrConstriction">—</div></div>
+      <div class="metric-card"><div class="m-label">Avg. Constriction</div><div class="m-value" id="plrConstriction">—</div></div>
+      <div class="metric-card"><div class="m-label">Right Eye</div><div class="m-value" id="plrConstrictionRight">—</div><div class="m-sub">constriction</div></div>
+      <div class="metric-card"><div class="m-label">Left Eye</div><div class="m-value" id="plrConstrictionLeft">—</div><div class="m-sub">constriction</div></div>
       <div class="metric-card"><div class="m-label">Latency</div><div class="m-value" id="plrLatency">—</div><div class="m-sub">ms</div></div>
       <div class="metric-card"><div class="m-label">Recovery (90%)</div><div class="m-value" id="plrRecovery">—</div><div class="m-sub">ms</div></div>
     </div>
+    <div class="hint" id="asymmetryHint" style="display:none;"></div>
     <div class="hint" id="mmCaveat">Pupil mm is estimated by using average adult iris diameter (~11.7mm, anatomically
       stable, an established calibration technique in eye-tracking research) as a built-in ruler, then locating the
       pupil's dark boundary in the image via pixel-brightness analysis. This second step is experimental and
@@ -1202,11 +1207,13 @@ function renderPupilTrace() {
 function summarizePlrChecklist() {
     plrChecklist.style.display = 'flex';
     const rows = [];
-    const samplesA = pupilSamplesA.filter(s => s.pupilMm !== null);
-    const samplesB = pupilSamplesB.filter(s => s.pupilMm !== null);
+    const samplesA = smoothPupilSeries(pupilSamplesA.filter(s => s.pupilMm !== null));
+    const samplesB = smoothPupilSeries(pupilSamplesB.filter(s => s.pupilMm !== null));
     const validA = pupilBaselineA !== null && samplesA.length >= 5;
     const validB = pupilBaselineB !== null && samplesB.length >= 5;
     const visibilityRate = totalPupilFrames > 0 ? faceDetectedFrames / totalPupilFrames : 0;
+    const asymmetryHint = document.getElementById('asymmetryHint');
+    asymmetryHint.style.display = 'none';
 
     if (!validA && !validB) {
         rows.push(['1', 'Pupils reacting to light?', 'na']);
@@ -1221,6 +1228,11 @@ function summarizePlrChecklist() {
         return;
     }
 
+    // Minimum taken from the SMOOTHED series (short moving average), not a
+    // single raw frame — a single-frame minimum is disproportionately
+    // exposed to this technique's per-frame measurement noise (~1px error
+    // on typically ~10px pupil radii in synthetic testing), which was
+    // making the two-eye comparison noisier than the underlying signal.
     const minA = validA ? Math.min(...samplesA.map(s => s.pupilMm)) : null;
     const minB = validB ? Math.min(...samplesB.map(s => s.pupilMm)) : null;
     const constrictionA = validA ? ((pupilBaselineA - minA) / pupilBaselineA) * 100 : null;
@@ -1231,27 +1243,45 @@ function summarizePlrChecklist() {
     const reacting = avgConstriction >= 3;
     const withinRange = avgConstriction >= 15;
     let equalBothEyes = 'na';
-    if (constrictionA !== null && constrictionB !== null) equalBothEyes = Math.abs(constrictionA - constrictionB) <= 5 ? 'yes' : 'no';
+    let asymmetryGapPts = null;
+    if (constrictionA !== null && constrictionB !== null) {
+        asymmetryGapPts = Math.abs(constrictionA - constrictionB);
+        // Widened from an initial 5-point threshold: testing showed 5 points
+        // is inside this technique's own per-eye measurement noise floor,
+        // so it was flagging "unequal" almost by default rather than
+        // reflecting a real difference.
+        equalBothEyes = asymmetryGapPts <= 10 ? 'yes' : 'no';
+    }
     const clearlyVisible = visibilityRate >= 0.6;
 
-    // Very rough adult reference bands (2-4mm constricted/bright, 4-8mm
-    // dilated/dim) — wide ranges, camera measurement error is real, treat
-    // this as a loose screening flag only, not a diagnostic cutoff.
     const baselineMmAvg = [pupilBaselineA, pupilBaselineB].filter(v => v !== null).reduce((a, b) => a + b, 0) / [pupilBaselineA, pupilBaselineB].filter(v => v !== null).length;
     const sizeInRange = baselineMmAvg >= 2 && baselineMmAvg <= 9;
 
     rows.push(['1', 'Pupils reacting to light?', reacting ? 'yes' : 'no']);
     rows.push(['2', 'Constriction within typical consumer-camera range (≥15%)?', withinRange ? 'yes' : 'no']);
-    rows.push(['3', 'Reaction equal in both eyes (within 5 points)?', equalBothEyes]);
+    rows.push(['3', 'Reaction equal in both eyes (within 10 points)?', equalBothEyes]);
     rows.push(['4', 'Iris/pupil clearly visible to camera throughout test?', clearlyVisible ? 'yes' : 'no']);
     rows.push(['5', 'Pupil size within typical adult range (2-9mm)?', sizeInRange ? 'yes' : 'no']);
     plrChecklist.innerHTML = rows.map(renderCheckRow).join('');
+
+    if (equalBothEyes === 'no') {
+        asymmetryHint.style.display = 'block';
+        asymmetryHint.innerHTML = `<b>Eyes differed by ${asymmetryGapPts.toFixed(1)} points this test.</b> With a
+            single-camera consumer technique like this, that's more often measurement noise (lighting angle,
+            eyelash occlusion, slightly different viewing angle per eye) than true anisocoria — most people's
+            eyes react almost identically. What matters is whether it's <b>consistent</b>: if repeat tests keep
+            showing the <i>same eye</i> reacting less, by a <i>similar</i> amount, that pattern is worth
+            mentioning to a clinician. If it varies randomly which eye "wins" each test, that points to noise,
+            not a real difference.`;
+    }
 
     plrNumbers.style.display = 'grid';
     document.getElementById('plrBaselineMm').textContent = baselineMmAvg.toFixed(2);
     const minMmAvg = [minA, minB].filter(v => v !== null).reduce((a, b) => a + b, 0) / [minA, minB].filter(v => v !== null).length;
     document.getElementById('plrMinMm').textContent = minMmAvg.toFixed(2);
     document.getElementById('plrConstriction').textContent = avgConstriction.toFixed(1) + '%';
+    document.getElementById('plrConstrictionRight').textContent = constrictionA !== null ? constrictionA.toFixed(1) + '%' : '—';
+    document.getElementById('plrConstrictionLeft').textContent = constrictionB !== null ? constrictionB.toFixed(1) + '%' : '—';
 
     let latencyMs = null, recoveryMs = null;
     if (validA && flashTimeMs !== null) {
@@ -1265,7 +1295,22 @@ function summarizePlrChecklist() {
     document.getElementById('plrRecovery').textContent = recoveryMs !== null ? Math.round(recoveryMs) : 'n/a';
 
     pupilStatusText.textContent = 'PLR test complete.';
-    finalPupilResultGlobal = { baselineMmAvg, minMmAvg, avgConstriction, latencyMs, recoveryMs, visibilityRate };
+    finalPupilResultGlobal = { baselineMmAvg, minMmAvg, avgConstriction, constrictionA, constrictionB, latencyMs, recoveryMs, visibilityRate };
+}
+
+// Short centered moving average to reduce single-frame measurement noise
+// before extracting a minimum — a raw single-frame minimum is much more
+// exposed to per-frame noise than a value drawn from a smoothed series.
+function smoothPupilSeries(samples, windowSize) {
+    windowSize = windowSize || 3;
+    if (samples.length < windowSize) return samples;
+    const half = Math.floor(windowSize / 2);
+    return samples.map((s, i) => {
+        const start = Math.max(0, i - half), end = Math.min(samples.length, i + half + 1);
+        const slice = samples.slice(start, end);
+        const avg = slice.reduce((a, x) => a + x.pupilMm, 0) / slice.length;
+        return { t: s.t, pupilMm: avg };
+    });
 }
 let finalPupilResultGlobal = null;
 
@@ -1427,24 +1472,39 @@ function runFixationStep() {
 // Iris center position relative to the eye's horizontal/vertical extent
 // (corners + upper/lower lid landmarks), normalized so head distance from
 // camera doesn't matter — only where the iris sits within the eye socket.
+// Returns null for near-closed/blinking frames (eyeHeight collapses),
+// which otherwise inject noisy samples right when downward gaze already
+// partially hoods the eyelid over the iris.
 function estimateGazeOffset(landmarks, w, h) {
     const px = i => ({ x: landmarks[i].x * w, y: landmarks[i].y * h });
     const outer = px(33), inner = px(133), upper = px(159), lower = px(145), iris = px(468);
     const eyeWidth = Math.hypot(outer.x - inner.x, outer.y - inner.y);
     const eyeHeight = Math.hypot(upper.x - lower.x, upper.y - lower.y);
     if (eyeWidth <= 0 || eyeHeight <= 0) return null;
+    if (eyeHeight / eyeWidth < 0.12) return null; // eye nearly closed / mid-blink — skip this frame
     const midX = (outer.x + inner.x) / 2, midY = (upper.y + lower.y) / 2;
     return { dx: (iris.x - midX) / eyeWidth, dy: (iris.y - midY) / eyeHeight };
 }
 
+function median(arr) {
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 function classifyGazeDirection(samples) {
     if (samples.length < 5) return 'unknown';
-    const avgDx = samples.reduce((a, s) => a + s.dx, 0) / samples.length;
-    const avgDy = samples.reduce((a, s) => a + s.dy, 0) / samples.length;
-    const DEAD_ZONE = 0.06;
-    if (Math.abs(avgDx) < DEAD_ZONE && Math.abs(avgDy) < DEAD_ZONE) return 'center';
-    if (Math.abs(avgDy) > Math.abs(avgDx)) return avgDy < 0 ? 'up' : 'down';
-    return avgDx > 0 ? 'right' : 'left';
+    const medDx = median(samples.map(s => s.dx));
+    const medDy = median(samples.map(s => s.dy));
+    const DEAD_ZONE_X = 0.06, DEAD_ZONE_Y = 0.045;
+    if (Math.abs(medDx) < DEAD_ZONE_X && Math.abs(medDy) < DEAD_ZONE_Y) return 'center';
+    if (Math.abs(medDy) / DEAD_ZONE_Y > Math.abs(medDx) / DEAD_ZONE_X) return medDy < 0 ? 'up' : 'down';
+    // landmarks come from the raw, UNMIRRORED camera frame (the on-screen
+    // preview is flipped for display only). For this eye, the outer/temporal
+    // corner sits at smaller x than the inner/nasal corner, so looking
+    // toward the subject's own right moves the iris toward SMALLER x —
+    // i.e. negative dx. (Previous version had this sign backwards.)
+    return medDx < 0 ? 'right' : 'left';
 }
 
 // Screens gaze-position stability during a still fixation for a rhythmic
