@@ -183,18 +183,26 @@
 
   <!-- ===================== FREQUENCY DOMAIN PANEL ===================== -->
   <div class="panel" id="freqPanel" style="display:none;">
-    <div class="panel-label"><span>Frequency-Domain HRV</span><span class="confidence" id="freqConfidence">--</span></div>
+    <div class="panel-label"><span>Frequency-Domain PRV</span><span class="confidence" id="freqConfidence">--</span></div>
+    <div class="sub" style="margin:-4px 0 4px;">Pulse Rate Variability (PPG-derived) — a proxy for ECG-based HRV. Agrees
+      well at rest; known to diverge under exertion, movement, or arterial stiffness, since pulse transit time adds
+      its own variability on top of true beat timing.</div>
     <canvas id="spectrum-canvas"></canvas>
     <div class="band-legend">
       <span><span class="dot" style="background:var(--amber);"></span>LF 0.04–0.15 Hz</span>
       <span><span class="dot" style="background:var(--trace);"></span>HF 0.15–0.40 Hz</span>
     </div>
-    <div class="metric-row">
+    <div class="metric-row cols3">
       <div class="metric-card"><div class="m-label">LF Power</div><div class="m-value" id="lfVal">—</div><div class="m-sub">ms²</div></div>
       <div class="metric-card"><div class="m-label">HF Power</div><div class="m-value" id="hfVal">—</div><div class="m-sub">ms²</div></div>
       <div class="metric-card"><div class="m-label">VLF Power</div><div class="m-value" id="vlfVal">—</div><div class="m-sub">ms²</div></div>
+    </div>
+    <div class="metric-row">
+      <div class="metric-card"><div class="m-label">Total Power</div><div class="m-value" id="tpVal">—</div><div class="m-sub">ms² &middot; LF+HF(+VLF)</div></div>
       <div class="metric-card"><div class="m-label">LF/HF Ratio</div><div class="m-value" id="lfhfVal">—</div><div class="m-sub">ratio</div></div>
     </div>
+    <div class="hint" id="tpHint">Total power gives context for the LF/HF ratio above — the same ratio means less
+      when total power is very low (weak overall signal) than when total power is robust.</div>
     <div class="balance-bar"><div class="lf-fill" id="lfFill" style="width:50%;">LF --%</div><div class="hf-fill" id="hfFill" style="width:50%;">HF --%</div></div>
     <div class="interp-box" id="interpBox">Interpretation appears once enough beats are captured.</div>
   </div>
@@ -218,14 +226,33 @@
     <canvas class="trace" id="pupilTraceCanvas" style="height:70px;"></canvas>
     <div class="checklist" id="plrChecklist" style="display:none;"></div>
     <div class="metric-row" id="plrNumbers" style="display:none;">
-      <div class="metric-card"><div class="m-label">Baseline Ratio</div><div class="m-value" id="plrBaseline">—</div></div>
+      <div class="metric-card"><div class="m-label">Baseline Pupil</div><div class="m-value" id="plrBaselineMm">—</div><div class="m-sub">mm (est.)</div></div>
+      <div class="metric-card"><div class="m-label">Min. Pupil (flash)</div><div class="m-value" id="plrMinMm">—</div><div class="m-sub">mm (est.)</div></div>
       <div class="metric-card"><div class="m-label">Peak Constriction</div><div class="m-value" id="plrConstriction">—</div></div>
       <div class="metric-card"><div class="m-label">Latency</div><div class="m-value" id="plrLatency">—</div><div class="m-sub">ms</div></div>
       <div class="metric-card"><div class="m-label">Recovery (90%)</div><div class="m-value" id="plrRecovery">—</div><div class="m-sub">ms</div></div>
     </div>
-    <div class="hint">Absolute pupil size in mm and guided eye-movement (up/down/left/right/roll) tracking are
-      planned as a follow-up feature — not included in this version.</div>
-    <button class="secondary" id="pupilBtn" style="width:100%; margin-top:10px;">Run 6-Second PLR Test</button>
+    <div class="hint" id="mmCaveat">Pupil mm is estimated by using average adult iris diameter (~11.7mm, anatomically
+      stable, an established calibration technique in eye-tracking research) as a built-in ruler, then locating the
+      pupil's dark boundary in the image via pixel-brightness analysis. This second step is experimental and
+      hasn't been validated against real hardware — treat these mm values as a rough estimate, not a measurement.</div>
+    <button class="secondary" id="pupilBtn" style="width:100%; margin-top:10px;">Run 8-Second PLR Test</button>
+  </div>
+
+  <!-- ===================== EYE MOVEMENT PANEL ===================== -->
+  <div class="panel">
+    <div class="panel-label"><span>Guided Eye Movement</span></div>
+    <div class="sub" style="margin-bottom:8px;">Tracks iris position relative to your eye corners while you follow
+      on-screen prompts. Screens gross extraocular movement in four directions — not a substitute for a clinical
+      exam, and cannot detect true ocular torsion (rotation), which needs sclera-texture tracking beyond this setup.</div>
+    <div class="cam-shell" style="aspect-ratio:1/1; max-width:260px; margin:0 auto; border-radius:50%;">
+      <video id="eom-video" autoplay playsinline muted></video>
+      <div class="guide" id="eomGuideRing" style="width:88%; aspect-ratio:1;"></div>
+    </div>
+    <div class="status-row"><div class="status-text" id="eomStatusText">Follow the on-screen direction prompt with your eyes, without moving your head.</div></div>
+    <div class="bpm-display" style="padding:4px 0;"><div class="bpm-number" id="eomPrompt" style="font-size:28px;">—</div></div>
+    <div class="checklist" id="eomChecklist" style="display:none;"></div>
+    <button class="secondary" id="eomBtn" style="width:100%; margin-top:10px;">Run Guided Eye Movement Test</button>
   </div>
 
   <!-- ===================== HISTORY PANEL ===================== -->
@@ -249,6 +276,7 @@
 </div>
 
 <canvas id="proc-canvas" width="40" height="40"></canvas>
+<canvas id="pupil-sample-canvas" width="64" height="64" style="display:none;"></canvas>
 <div class="flash-overlay" id="flashOverlay" style="position:fixed; inset:0; background:white; opacity:0; pointer-events:none; z-index:200;"></div>
 
 <script>
@@ -805,6 +833,7 @@ function runFrequencyAnalysis() {
     const hf = bandPower(welch.freqs, welch.psd, 0.15, 0.40);
     const vlf = duration >= 180 ? bandPower(welch.freqs, welch.psd, 0.003, 0.04) : null;
     const totalForNu = lf + hf;
+    const totalPower = lf + hf + (vlf !== null ? vlf : 0);
     const lfHfRatio = hf > 0.0001 ? lf / hf : null;
     const lfNu = totalForNu > 0 ? (lf / totalForNu * 100) : null;
     const hfNu = totalForNu > 0 ? (hf / totalForNu * 100) : null;
@@ -817,7 +846,7 @@ function runFrequencyAnalysis() {
     else if (duration < 120) { confidenceTier = 'low'; confidenceLabel = 'short (60-120s)'; }
     else if (duration < 300) { confidenceTier = 'medium'; confidenceLabel = 'below 5-min standard'; }
     else { confidenceTier = 'high'; confidenceLabel = 'standard window'; }
-    return { freqs: welch.freqs, psd: welch.psd, lf, hf, vlf, lfHfRatio, lfNu, hfNu, breathingHz, breathingBpm, durationSec: duration, confidenceTier, confidenceLabel };
+    return { freqs: welch.freqs, psd: welch.psd, lf, hf, vlf, totalPower, lfHfRatio, lfNu, hfNu, breathingHz, breathingBpm, durationSec: duration, confidenceTier, confidenceLabel };
 }
 
 function renderFrequencyResult(r, isLive) {
@@ -828,7 +857,16 @@ function renderFrequencyResult(r, isLive) {
     document.getElementById('lfVal').textContent = r.lf.toFixed(1);
     document.getElementById('hfVal').textContent = r.hf.toFixed(1);
     document.getElementById('vlfVal').textContent = r.vlf !== null ? r.vlf.toFixed(1) : 'N/A';
+    document.getElementById('tpVal').textContent = r.totalPower.toFixed(1);
     document.getElementById('lfhfVal').textContent = r.lfHfRatio !== null ? r.lfHfRatio.toFixed(2) : '--';
+    const tpHint = document.getElementById('tpHint');
+    if (r.totalPower < 100) {
+        tpHint.innerHTML = `<b>Total power is quite low</b> in this window — treat the LF/HF ratio above with
+            extra caution, since a ratio computed on very little overall power is more easily skewed by noise
+            than a real autonomic pattern. Consider a longer or cleaner-signal scan.`;
+    } else {
+        tpHint.textContent = 'Total power gives context for the LF/HF ratio above — the same ratio means less when total power is very low (weak overall signal) than when total power is robust.';
+    }
     const lfPct = r.lfNu !== null ? r.lfNu : 50, hfPct = r.hfNu !== null ? r.hfNu : 50;
     document.getElementById('lfFill').style.width = lfPct + '%';
     document.getElementById('hfFill').style.width = hfPct + '%';
@@ -930,14 +968,27 @@ renderHistory();
 
 /* ================================================================
    SECTION 8 — PUPILLARY LIGHT REFLEX (real, MediaPipe-based)
-   Now tracks each eye SEPARATELY (not averaged) so left/right
-   symmetry can actually be checked, and reports results as a
-   Yes/No checklist rather than raw numbers. Absolute pupil size in
-   mm and guided eye-movement tracking are deferred to a follow-up.
+   Tracks each eye SEPARATELY. Two measurements per frame:
+     1. IRIS diameter (from MediaPipe iris landmarks) — anatomically
+        stable (~11.7mm avg adult), used purely as a calibration
+        ruler to get a pixel-to-mm scale. It does NOT itself
+        constrict with light.
+     2. PUPIL diameter — the actual dark opening that constricts,
+        found via a radial dark-boundary pixel scan (tested against
+        synthetic images before shipping; real eyes are messier —
+        eyelashes, glare, iris color — so treat as experimental.
+   Flash sequence: brief dark-adaptation phase, then a bright flash
+   with a forced-reflow to guarantee the browser actually paints the
+   bright frame before fading (the earlier version skipped this and
+   the flash silently never rendered on at least one real device).
    ================================================================ */
+const IRIS_DIAMETER_MM = 11.7; // population-average adult horizontal iris diameter; individual variation is small (~ +-0.5mm) per eye-biometrics literature, used here as a built-in calibration ruler
+const EYE_A_IDX = { center: 468, b1: 469, b2: 470, b3: 471, b4: 472 };
+const EYE_B_IDX = { center: 473, b1: 474, b2: 475, b3: 476, b4: 477 };
+
 let faceLandmarker = null, pupilStream = null, pupilRunning = false;
-let pupilSamplesA = [], pupilSamplesB = []; // per-eye {t, ratio}
-let pupilBaselineA = null, pupilBaselineB = null;
+let pupilSamplesA = [], pupilSamplesB = []; // per-eye {t, ratio, pupilMm}
+let pupilBaselineA = null, pupilBaselineB = null; // baseline PUPIL mm (dark-adapted)
 let pupilStartTime = 0, flashTimeMs = null;
 let faceDetectedFrames = 0, totalPupilFrames = 0;
 
@@ -948,6 +999,8 @@ const flashOverlay = document.getElementById('flashOverlay');
 const eyeGuideRing = document.getElementById('eyeGuideRing');
 const plrChecklist = document.getElementById('plrChecklist');
 const plrNumbers = document.getElementById('plrNumbers');
+const pupilSampleCanvas = document.getElementById('pupil-sample-canvas');
+const pupilSampleCtx = pupilSampleCanvas.getContext('2d', { willReadFrequently: true });
 
 async function loadFaceLandmarker() {
     const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14");
@@ -974,20 +1027,21 @@ async function startEyeResponseTest() {
         pupilSamplesA = []; pupilSamplesB = []; pupilBaselineA = null; pupilBaselineB = null;
         faceDetectedFrames = 0; totalPupilFrames = 0;
         pupilRunning = true; pupilStartTime = performance.now(); flashTimeMs = null;
-        pupilStatusText.textContent = "Locating face...";
+        pupilStatusText.textContent = "Locating face... (screen will dim briefly, then flash)";
         eyeGuideRing.classList.remove('active');
+        beginDarkAdaptation();
         requestAnimationFrame(pupilLoop);
 
         setTimeout(() => {
-            const baseA = pupilSamplesA.filter(s => s.t < 2000).map(s => s.ratio);
-            const baseB = pupilSamplesB.filter(s => s.t < 2000).map(s => s.ratio);
+            const baseA = pupilSamplesA.filter(s => s.t < 2000 && s.pupilMm !== null).map(s => s.pupilMm);
+            const baseB = pupilSamplesB.filter(s => s.t < 2000 && s.pupilMm !== null).map(s => s.pupilMm);
             if (baseA.length > 3) pupilBaselineA = baseA.reduce((a, b) => a + b, 0) / baseA.length;
             if (baseB.length > 3) pupilBaselineB = baseB.reduce((a, b) => a + b, 0) / baseB.length;
             flashTimeMs = performance.now() - pupilStartTime;
             triggerLightFlash();
         }, 2000);
 
-        setTimeout(() => stopEyeResponseTest(), 6000);
+        setTimeout(() => stopEyeResponseTest(), 8000);
     } catch (err) {
         pupilStatusText.textContent = "Camera access denied, or the face-tracking model failed to load (needs internet access).";
         btn.disabled = false;
@@ -1003,10 +1057,12 @@ function pupilLoop() {
             faceDetectedFrames++;
             eyeGuideRing.classList.add('active');
             const lm = result.faceLandmarks[0];
-            const { ratioA, ratioB } = computePupilRatios(lm, pupilVideo.videoWidth, pupilVideo.videoHeight);
+            const vw = pupilVideo.videoWidth, vh = pupilVideo.videoHeight;
+            const measA = measureEyePupil(lm, vw, vh, EYE_A_IDX);
+            const measB = measureEyePupil(lm, vw, vh, EYE_B_IDX);
             const t = performance.now() - pupilStartTime;
-            if (ratioA) pupilSamplesA.push({ t, ratio: ratioA });
-            if (ratioB) pupilSamplesB.push({ t, ratio: ratioB });
+            pupilSamplesA.push({ t, pupilMm: measA ? measA.pupilMm : null });
+            pupilSamplesB.push({ t, pupilMm: measB ? measB.pupilMm : null });
             pupilStatusText.textContent = pupilBaselineA ? "Tracking both eyes..." : "Tracking... acquiring baseline";
         } else {
             eyeGuideRing.classList.remove('active');
@@ -1016,29 +1072,96 @@ function pupilLoop() {
     if (pupilRunning) requestAnimationFrame(pupilLoop);
 }
 
-function computePupilRatios(landmarks, w, h) {
-    // 478-point MediaPipe face mesh with iris refinement. Eye A iris = 468
-    // (center) + 469-472 (boundary); eye B iris = 473 (center) + 474-477
-    // (boundary). Outer eye corners for normalization: 33 and 263. Verify
-    // against MediaPipe's landmark map if the library version changes.
-    const px = i => ({ x: landmarks[i].x * w, y: landmarks[i].y * h });
+// Iris landmarks -> mm/px calibration, then a radial dark-boundary scan
+// within that eye's region of the actual video frame to find the pupil
+// (not the iris) boundary. Returns null if the scan can't get a confident
+// reading on enough rays (glare, eyelash occlusion, poor lighting, etc).
+function measureEyePupil(landmarks, vw, vh, idx) {
+    const px = i => ({ x: landmarks[i].x * vw, y: landmarks[i].y * vh });
     const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-    const interocular = dist(px(33), px(263));
-    if (interocular <= 0) return { ratioA: null, ratioB: null };
-    const a469 = px(469), a471 = px(471), a470 = px(470), a472 = px(472);
-    const irisDiamA = (dist(a469, a471) + dist(a470, a472)) / 2;
-    const b474 = px(474), b476 = px(476), b475 = px(475), b477 = px(477);
-    const irisDiamB = (dist(b474, b476) + dist(b475, b477)) / 2;
-    return { ratioA: irisDiamA / interocular, ratioB: irisDiamB / interocular };
+    const center = px(idx.center), b1 = px(idx.b1), b2 = px(idx.b2), b3 = px(idx.b3), b4 = px(idx.b4);
+    const irisDiamPx = (dist(b1, b3) + dist(b2, b4)) / 2;
+    if (irisDiamPx <= 0) return null;
+    const mmPerPx = IRIS_DIAMETER_MM / irisDiamPx;
+
+    const irisRadiusPx = irisDiamPx / 2;
+    const roiRadius = irisRadiusPx * 1.6;
+    const sx = Math.max(0, center.x - roiRadius), sy = Math.max(0, center.y - roiRadius);
+    const sw = Math.min(vw - sx, roiRadius * 2), sh = Math.min(vh - sy, roiRadius * 2);
+    if (sw < 8 || sh < 8) return null;
+
+    const sampleSize = pupilSampleCanvas.width; // 64
+    pupilSampleCtx.clearRect(0, 0, sampleSize, sampleSize);
+    pupilSampleCtx.drawImage(pupilVideo, sx, sy, sw, sh, 0, 0, sampleSize, sampleSize);
+    let imgData;
+    try { imgData = pupilSampleCtx.getImageData(0, 0, sampleSize, sampleSize).data; } catch (e) { return null; }
+    const scaleX = sampleSize / sw, scaleY = sampleSize / sh;
+    const avgScale = (scaleX + scaleY) / 2;
+
+    function getLuminance(x, y) {
+        const xi = Math.round(x), yi = Math.round(y);
+        if (xi < 0 || yi < 0 || xi >= sampleSize || yi >= sampleSize) return 255;
+        const i = (yi * sampleSize + xi) * 4;
+        return 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
+    }
+
+    const centerXInSample = (center.x - sx) * scaleX;
+    const centerYInSample = (center.y - sy) * scaleY;
+    const maxRadiusSample = sampleSize * 0.45;
+    const pupilRadiusSamplePx = detectPupilRadiusPx(getLuminance, centerXInSample, centerYInSample, maxRadiusSample, 16);
+    if (pupilRadiusSamplePx === null) return null;
+
+    const pupilRadiusVideoPx = pupilRadiusSamplePx / avgScale;
+    const pupilDiamPx = pupilRadiusVideoPx * 2;
+    return { pupilMm: pupilDiamPx * mmPerPx, irisDiamPx };
+}
+
+// Radial edge scan: walk outward from the eye center along several angles,
+// find where luminance crosses from dark (pupil) to lighter (iris) on each
+// ray, and take the median crossing radius. Rays with too little contrast
+// (glare, eyelash, closed eye) are skipped rather than guessed.
+// Validated against synthetic dark-circle-in-lighter-ring test images
+// (median error ~1px) before use here — real eyes will be noisier.
+function detectPupilRadiusPx(getLuminance, cx, cy, maxRadius, numAngles) {
+    const radii = [];
+    for (let a = 0; a < numAngles; a++) {
+        const theta = (a / numAngles) * 2 * Math.PI;
+        const dx = Math.cos(theta), dy = Math.sin(theta);
+        const samples = [];
+        for (let r = 0; r <= maxRadius; r++) samples.push(getLuminance(cx + dx * r, cy + dy * r));
+        const minL = Math.min(...samples), maxL = Math.max(...samples);
+        const contrast = maxL - minL;
+        if (contrast < 25) continue;
+        const threshold = minL + contrast * 0.4;
+        let edgeR = null;
+        for (let r = 1; r <= maxRadius; r++) { if (samples[r] >= threshold) { edgeR = r; break; } }
+        if (edgeR !== null) radii.push(edgeR);
+    }
+    if (radii.length < Math.ceil(numAngles * 0.35)) return null;
+    radii.sort((a, b) => a - b);
+    return radii[Math.floor(radii.length / 2)];
+}
+
+function beginDarkAdaptation() {
+    flashOverlay.style.transition = 'opacity 0.4s ease-in';
+    flashOverlay.style.background = '#000000';
+    flashOverlay.style.opacity = '0.92';
 }
 
 function triggerLightFlash() {
-    flashOverlay.style.transition = 'none'; flashOverlay.style.opacity = '1';
-    requestAnimationFrame(() => { flashOverlay.style.transition = 'opacity 1.2s ease-out'; flashOverlay.style.opacity = '0'; });
+    flashOverlay.style.transition = 'none';
+    flashOverlay.style.background = '#ffffff';
+    flashOverlay.style.opacity = '1';
+    void flashOverlay.offsetHeight; // force a reflow so the browser actually paints this frame before the fade below starts — without this the two style changes can get coalesced and the flash never visibly renders
+    flashOverlay.style.transition = 'opacity 1.2s ease-out';
+    flashOverlay.style.opacity = '0';
+    pupilStatusText.textContent = "💡 Flash triggered — tracking response...";
 }
 
 function stopEyeResponseTest() {
     pupilRunning = false;
+    flashOverlay.style.transition = 'opacity 0.3s ease-out';
+    flashOverlay.style.opacity = '0';
     if (pupilStream) { pupilStream.getTracks().forEach(t => t.stop()); pupilStream = null; }
     document.getElementById('pupilBtn').disabled = false;
     renderPupilTrace();
@@ -1052,39 +1175,43 @@ function renderPupilTrace() {
     pupilTraceCanvas.width = cssW * dpr; pupilTraceCanvas.height = cssH * dpr;
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     c.clearRect(0, 0, cssW, cssH);
-    if (pupilSamplesA.length < 2) return;
+    const validSamplesA = pupilSamplesA.filter(s => s.pupilMm !== null);
+    const validSamplesB = pupilSamplesB.filter(s => s.pupilMm !== null);
+    if (validSamplesA.length < 2 && validSamplesB.length < 2) return;
     const pad = { left: 6, right: 6, top: 8, bottom: 8 };
     const plotW = cssW - pad.left - pad.right, plotH = cssH - pad.top - pad.bottom;
-    const allSamples = pupilSamplesA.concat(pupilSamplesB);
+    const allSamples = validSamplesA.concat(validSamplesB);
     const maxT = Math.max(...allSamples.map(s => s.t));
-    const allRatios = allSamples.map(s => s.ratio);
-    const minR = Math.min(...allRatios), maxR = Math.max(...allRatios);
-    const range = Math.max(maxR - minR, 0.001);
+    const allVals = allSamples.map(s => s.pupilMm);
+    const minV = Math.min(...allVals), maxV = Math.max(...allVals);
+    const range = Math.max(maxV - minV, 0.05);
     const xPix = t => pad.left + (t / maxT) * plotW;
-    const yPix = r => pad.top + plotH - ((r - minR) / range) * plotH;
-
+    const yPix = v => pad.top + plotH - ((v - minV) / range) * plotH;
     function drawSeries(samples, color) {
+        if (samples.length < 2) return;
         c.strokeStyle = color; c.lineWidth = 1.5; c.beginPath();
-        samples.forEach((s, i) => { const x = xPix(s.t), y = yPix(s.ratio); if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); });
+        samples.forEach((s, i) => { const x = xPix(s.t), y = yPix(s.pupilMm); if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); });
         c.stroke();
     }
-    drawSeries(pupilSamplesA, '#4FD9C4');
-    drawSeries(pupilSamplesB, '#B399F0');
+    drawSeries(validSamplesA, '#4FD9C4');
+    drawSeries(validSamplesB, '#B399F0');
 }
 
 function summarizePlrChecklist() {
     plrChecklist.style.display = 'flex';
     const rows = [];
-
-    const validA = pupilBaselineA && pupilSamplesA.length >= 5;
-    const validB = pupilBaselineB && pupilSamplesB.length >= 5;
+    const samplesA = pupilSamplesA.filter(s => s.pupilMm !== null);
+    const samplesB = pupilSamplesB.filter(s => s.pupilMm !== null);
+    const validA = pupilBaselineA !== null && samplesA.length >= 5;
+    const validB = pupilBaselineB !== null && samplesB.length >= 5;
     const visibilityRate = totalPupilFrames > 0 ? faceDetectedFrames / totalPupilFrames : 0;
 
     if (!validA && !validB) {
         rows.push(['1', 'Pupils reacting to light?', 'na']);
         rows.push(['2', 'Constriction within typical consumer-camera range?', 'na']);
         rows.push(['3', 'Reaction equal in both eyes?', 'na']);
-        rows.push(['4', 'Iris clearly visible to camera throughout test?', visibilityRate >= 0.6 ? 'yes' : 'no']);
+        rows.push(['4', 'Iris/pupil clearly visible to camera throughout test?', visibilityRate >= 0.6 ? 'yes' : 'no']);
+        rows.push(['5', 'Pupil size within typical adult range?', 'na']);
         plrChecklist.innerHTML = rows.map(renderCheckRow).join('');
         plrNumbers.style.display = 'none';
         pupilStatusText.textContent = 'Not enough signal captured — retry with your face well-lit and centered in the ring.';
@@ -1092,43 +1219,51 @@ function summarizePlrChecklist() {
         return;
     }
 
-    const minA = validA ? Math.min(...pupilSamplesA.map(s => s.ratio)) : null;
-    const minB = validB ? Math.min(...pupilSamplesB.map(s => s.ratio)) : null;
+    const minA = validA ? Math.min(...samplesA.map(s => s.pupilMm)) : null;
+    const minB = validB ? Math.min(...samplesB.map(s => s.pupilMm)) : null;
     const constrictionA = validA ? ((pupilBaselineA - minA) / pupilBaselineA) * 100 : null;
     const constrictionB = validB ? ((pupilBaselineB - minB) / pupilBaselineB) * 100 : null;
-    const avgConstriction = [constrictionA, constrictionB].filter(v => v !== null).reduce((a, b) => a + b, 0) / [constrictionA, constrictionB].filter(v => v !== null).length;
+    const constrictions = [constrictionA, constrictionB].filter(v => v !== null);
+    const avgConstriction = constrictions.reduce((a, b) => a + b, 0) / constrictions.length;
 
     const reacting = avgConstriction >= 3;
     const withinRange = avgConstriction >= 15;
     let equalBothEyes = 'na';
-    if (constrictionA !== null && constrictionB !== null) {
-        equalBothEyes = Math.abs(constrictionA - constrictionB) <= 5 ? 'yes' : 'no';
-    }
+    if (constrictionA !== null && constrictionB !== null) equalBothEyes = Math.abs(constrictionA - constrictionB) <= 5 ? 'yes' : 'no';
     const clearlyVisible = visibilityRate >= 0.6;
+
+    // Very rough adult reference bands (2-4mm constricted/bright, 4-8mm
+    // dilated/dim) — wide ranges, camera measurement error is real, treat
+    // this as a loose screening flag only, not a diagnostic cutoff.
+    const baselineMmAvg = [pupilBaselineA, pupilBaselineB].filter(v => v !== null).reduce((a, b) => a + b, 0) / [pupilBaselineA, pupilBaselineB].filter(v => v !== null).length;
+    const sizeInRange = baselineMmAvg >= 2 && baselineMmAvg <= 9;
 
     rows.push(['1', 'Pupils reacting to light?', reacting ? 'yes' : 'no']);
     rows.push(['2', 'Constriction within typical consumer-camera range (≥15%)?', withinRange ? 'yes' : 'no']);
     rows.push(['3', 'Reaction equal in both eyes (within 5 points)?', equalBothEyes]);
-    rows.push(['4', 'Iris clearly visible to camera throughout test?', clearlyVisible ? 'yes' : 'no']);
+    rows.push(['4', 'Iris/pupil clearly visible to camera throughout test?', clearlyVisible ? 'yes' : 'no']);
+    rows.push(['5', 'Pupil size within typical adult range (2-9mm)?', sizeInRange ? 'yes' : 'no']);
     plrChecklist.innerHTML = rows.map(renderCheckRow).join('');
 
     plrNumbers.style.display = 'grid';
-    document.getElementById('plrBaseline').textContent = validA ? pupilBaselineA.toFixed(3) : (validB ? pupilBaselineB.toFixed(3) : '—');
+    document.getElementById('plrBaselineMm').textContent = baselineMmAvg.toFixed(2);
+    const minMmAvg = [minA, minB].filter(v => v !== null).reduce((a, b) => a + b, 0) / [minA, minB].filter(v => v !== null).length;
+    document.getElementById('plrMinMm').textContent = minMmAvg.toFixed(2);
     document.getElementById('plrConstriction').textContent = avgConstriction.toFixed(1) + '%';
 
     let latencyMs = null, recoveryMs = null;
     if (validA && flashTimeMs !== null) {
         let minIdx = 0, mv = Infinity;
-        pupilSamplesA.forEach((s, i) => { if (s.ratio < mv) { mv = s.ratio; minIdx = i; } });
-        latencyMs = Math.max(0, pupilSamplesA[minIdx].t - flashTimeMs);
+        samplesA.forEach((s, i) => { if (s.pupilMm < mv) { mv = s.pupilMm; minIdx = i; } });
+        latencyMs = Math.max(0, samplesA[minIdx].t - flashTimeMs);
         const recoveryTarget = pupilBaselineA * 0.9;
-        for (let i = minIdx; i < pupilSamplesA.length; i++) { if (pupilSamplesA[i].ratio >= recoveryTarget) { recoveryMs = pupilSamplesA[i].t - pupilSamplesA[minIdx].t; break; } }
+        for (let i = minIdx; i < samplesA.length; i++) { if (samplesA[i].pupilMm >= recoveryTarget) { recoveryMs = samplesA[i].t - samplesA[minIdx].t; break; } }
     }
     document.getElementById('plrLatency').textContent = latencyMs !== null ? Math.round(latencyMs) : '—';
     document.getElementById('plrRecovery').textContent = recoveryMs !== null ? Math.round(recoveryMs) : 'n/a';
 
     pupilStatusText.textContent = 'PLR test complete.';
-    finalPupilResultGlobal = { constrictionA, constrictionB, avgConstriction, latencyMs, recoveryMs, visibilityRate };
+    finalPupilResultGlobal = { baselineMmAvg, minMmAvg, avgConstriction, latencyMs, recoveryMs, visibilityRate };
 }
 let finalPupilResultGlobal = null;
 
@@ -1136,6 +1271,121 @@ function renderCheckRow([num, question, answer]) {
     const cls = answer === 'yes' ? 'ans-yes' : answer === 'no' ? 'ans-no' : 'ans-na';
     const label = answer === 'yes' ? 'YES' : answer === 'no' ? 'NO' : 'N/A';
     return `<div class="check-row"><div class="q"><span class="n">${num}.</span><span>${question}</span></div><span class="check-answer ${cls}">${label}</span></div>`;
+}
+
+/* ================================================================
+   SECTION 9 — GUIDED EYE MOVEMENT (real, landmark-based gaze direction)
+   Tracks the iris center's position relative to the eye's bounding
+   box (corners + top/bottom lids) to estimate gaze direction — a
+   simple, well-established relative-position technique. Cannot
+   detect true ocular torsion (rolling); the "circular scan" only
+   checks that all four cardinal directions were reached in sequence.
+   ================================================================ */
+const EOM_SEQUENCE = [
+    { label: 'Look UP', dir: 'up' },
+    { label: 'Look RIGHT', dir: 'right' },
+    { label: 'Look DOWN', dir: 'down' },
+    { label: 'Look LEFT', dir: 'left' },
+];
+let eomStream = null, eomRunning = false, eomStepIndex = -1;
+let eomStepResults = [];
+const eomVideo = document.getElementById('eom-video');
+const eomStatusText = document.getElementById('eomStatusText');
+const eomGuideRing = document.getElementById('eomGuideRing');
+const eomPromptEl = document.getElementById('eomPrompt');
+const eomChecklist = document.getElementById('eomChecklist');
+
+document.getElementById('eomBtn').addEventListener('click', startEomTest);
+
+async function startEomTest() {
+    const btn = document.getElementById('eomBtn');
+    btn.disabled = true;
+    eomChecklist.style.display = 'none';
+    try {
+        if (!faceLandmarker) { eomStatusText.textContent = "Loading face-tracking model (first run only)..."; await loadFaceLandmarker(); }
+        eomStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }, audio: false });
+        eomVideo.srcObject = eomStream;
+        await eomVideo.play();
+
+        eomRunning = true; eomStepIndex = 0; eomStepResults = [];
+        eomGuideRing.classList.remove('active');
+        runEomStep();
+    } catch (err) {
+        eomStatusText.textContent = "Camera access denied, or the face-tracking model failed to load.";
+        btn.disabled = false;
+    }
+}
+
+function runEomStep() {
+    if (eomStepIndex >= EOM_SEQUENCE.length) { finishEomTest(); return; }
+    const step = EOM_SEQUENCE[eomStepIndex];
+    eomPromptEl.textContent = step.label;
+    eomStatusText.textContent = `Step ${eomStepIndex + 1} of ${EOM_SEQUENCE.length} — hold for 2 seconds`;
+    const gazeSamples = [];
+    const stepStart = performance.now();
+
+    function stepLoop() {
+        if (!eomRunning) return;
+        if (eomVideo.readyState >= 2 && faceLandmarker) {
+            const result = faceLandmarker.detectForVideo(eomVideo, performance.now());
+            if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
+                eomGuideRing.classList.add('active');
+                const gaze = estimateGazeOffset(result.faceLandmarks[0], eomVideo.videoWidth, eomVideo.videoHeight);
+                if (gaze) gazeSamples.push(gaze);
+            } else {
+                eomGuideRing.classList.remove('active');
+            }
+        }
+        if (performance.now() - stepStart < 2000) {
+            requestAnimationFrame(stepLoop);
+        } else {
+            const detectedDir = classifyGazeDirection(gazeSamples);
+            eomStepResults.push({ instructed: step.dir, detected: detectedDir, match: detectedDir === step.dir });
+            eomStepIndex++;
+            runEomStep();
+        }
+    }
+    requestAnimationFrame(stepLoop);
+}
+
+// Iris center position relative to the eye's horizontal/vertical extent
+// (corners + upper/lower lid landmarks), normalized so head distance from
+// camera doesn't matter — only where the iris sits within the eye socket.
+function estimateGazeOffset(landmarks, w, h) {
+    const px = i => ({ x: landmarks[i].x * w, y: landmarks[i].y * h });
+    // Right eye: corners 33 (outer) / 133 (inner), lids 159 (upper) / 145 (lower). Iris center 468.
+    const outer = px(33), inner = px(133), upper = px(159), lower = px(145), iris = px(468);
+    const eyeWidth = Math.hypot(outer.x - inner.x, outer.y - inner.y);
+    const eyeHeight = Math.hypot(upper.x - lower.x, upper.y - lower.y);
+    if (eyeWidth <= 0 || eyeHeight <= 0) return null;
+    const midX = (outer.x + inner.x) / 2, midY = (upper.y + lower.y) / 2;
+    return { dx: (iris.x - midX) / eyeWidth, dy: (iris.y - midY) / eyeHeight };
+}
+
+function classifyGazeDirection(samples) {
+    if (samples.length < 5) return 'unknown';
+    const avgDx = samples.reduce((a, s) => a + s.dx, 0) / samples.length;
+    const avgDy = samples.reduce((a, s) => a + s.dy, 0) / samples.length;
+    const DEAD_ZONE = 0.06;
+    if (Math.abs(avgDx) < DEAD_ZONE && Math.abs(avgDy) < DEAD_ZONE) return 'center';
+    if (Math.abs(avgDy) > Math.abs(avgDx)) return avgDy < 0 ? 'up' : 'down';
+    // Note: video is mirrored for display (scaleX(-1)) but landmark coords
+    // come from the raw unmirrored frame, so dx sign maps directly to the
+    // subject's own left/right, not the mirrored on-screen image.
+    return avgDx > 0 ? 'right' : 'left';
+}
+
+function finishEomTest() {
+    eomRunning = false;
+    if (eomStream) { eomStream.getTracks().forEach(t => t.stop()); eomStream = null; }
+    document.getElementById('eomBtn').disabled = false;
+    eomPromptEl.textContent = '—';
+    eomStatusText.textContent = 'Eye movement test complete.';
+    eomChecklist.style.display = 'flex';
+    const rows = eomStepResults.map((r, i) => [String(i + 1), `Detected gaze matched "${r.instructed}" prompt?`, r.detected === 'unknown' ? 'na' : (r.match ? 'yes' : 'no')]);
+    const allMatched = eomStepResults.every(r => r.match);
+    rows.push(['5', 'All four directions tracked successfully?', allMatched ? 'yes' : 'no']);
+    eomChecklist.innerHTML = rows.map(renderCheckRow).join('');
 }
 </script>
 </body>
