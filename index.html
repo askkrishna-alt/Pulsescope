@@ -1507,16 +1507,18 @@ function runFixationStep() {
 // Iris center position relative to the eye's horizontal/vertical extent
 // (corners + upper/lower lid landmarks), normalized so head distance from
 // camera doesn't matter — only where the iris sits within the eye socket.
-// Returns null for near-closed/blinking frames (eyeHeight collapses),
-// which otherwise inject noisy samples right when downward gaze already
-// partially hoods the eyelid over the iris.
+// Returns null only for near-TOTAL eye closure (true blinks). The palpebral
+// aperture also narrows naturally during downward gaze (not a blink, just
+// how eyelids work), so this threshold must stay well below that natural
+// narrowing or it ends up filtering out real downgaze frames entirely —
+// which is exactly what an earlier, too-aggressive threshold (0.12) did.
 function estimateGazeOffset(landmarks, w, h) {
     const px = i => ({ x: landmarks[i].x * w, y: landmarks[i].y * h });
     const outer = px(33), inner = px(133), upper = px(159), lower = px(145), iris = px(468);
     const eyeWidth = Math.hypot(outer.x - inner.x, outer.y - inner.y);
     const eyeHeight = Math.hypot(upper.x - lower.x, upper.y - lower.y);
     if (eyeWidth <= 0 || eyeHeight <= 0) return null;
-    if (eyeHeight / eyeWidth < 0.12) return null; // eye nearly closed / mid-blink — skip this frame
+    if (eyeHeight / eyeWidth < 0.04) return null; // only true near-total closure, not downgaze narrowing
     const midX = (outer.x + inner.x) / 2, midY = (upper.y + lower.y) / 2;
     return { dx: (iris.x - midX) / eyeWidth, dy: (iris.y - midY) / eyeHeight };
 }
