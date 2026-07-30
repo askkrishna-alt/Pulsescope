@@ -136,7 +136,36 @@
   .hint b{ color:var(--text); }
   footer{ margin-top:22px; font-size:11.5px; color:var(--muted); line-height:1.6; border-top:1px solid var(--line); padding-top:14px; }
 
+  .report-header-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .report-meta{ font-size:11px; color:var(--muted); margin:-4px 0 10px; }
+  .report-section-title{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); margin:20px 0 8px; padding-top:14px; border-top:1px solid var(--line); }
+
   #webcam-stream-hidden, #proc-canvas{ display:none; }
+
+  /* ============== PRINT / PDF EXPORT ==============
+     Only the report panel prints; everything else (live capture UI,
+     camera previews, buttons, history table) is hidden. Switches to a
+     plain light background — a dark terminal theme wastes ink and reads
+     poorly as a printed clinical document. */
+  @media print {
+    body { background: #fff !important; color: #111 !important; padding: 0; }
+    .wrap { max-width: 100%; }
+    header, .panel:not(.report-print-area), footer { display: none !important; }
+    .report-print-area {
+      display: flex !important; background: #fff !important; border: none !important;
+      color: #111 !important; padding: 0;
+    }
+    .report-print-area .panel-label { color: #111 !important; }
+    .report-print-area .report-meta, .report-print-area .hint, .report-print-area .m-label { color: #444 !important; }
+    .report-print-area .metric-card { background: #f4f4f4 !important; border: 1px solid #ccc !important; }
+    .report-print-area .interp-box { background: #f4f4f4 !important; color: #111 !important; }
+    .report-print-area .m-value { color: #111 !important; }
+    .no-print { display: none !important; }
+    .report-section-title { border-top-color: #ccc !important; color: #555 !important; page-break-after: avoid; }
+    .report-state-name { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    canvas { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>
 </head>
 <body>
@@ -281,14 +310,63 @@
   </div>
 
   <!-- ===================== AUTONOMIC STATE REPORT ===================== -->
-  <div class="panel" id="reportPanel" style="display:none;">
-    <div class="panel-label"><span>Autonomic State Report</span></div>
+  <div class="panel report-print-area" id="reportPanel" style="display:none;">
+    <div class="panel-label report-header-row">
+      <span>Autonomic Nervous System — Full Report</span>
+      <button class="secondary no-print" id="printReportBtn">Download / Print (PDF)</button>
+    </div>
+    <div class="report-meta">Generated <span id="reportDate">—</span> · Single-session snapshot, not a longitudinal diagnosis</div>
+
     <div class="report-state-name" id="reportStateName">—</div>
     <div class="state-spectrum"><div class="state-spectrum-marker" id="reportMarker" style="left:50%;"></div></div>
     <div class="amp-row" style="margin-top:2px;"><span>Calm</span><span>Mild</span><span>Acute</span><span>Sustained / Depleted</span></div>
     <div class="interp-box" id="reportDescription" style="margin-top:14px;"></div>
     <div class="metric-row cols3" id="reportMetrics"></div>
+
+    <div class="report-section-title">RR-Interval Scatter (Poincaré Plot)</div>
+    <div id="poincareBox" style="display:none;">
+      <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+        <canvas id="poincareCanvas" style="width:180px; height:180px; flex-shrink:0;"></canvas>
+        <div style="flex:1; min-width:140px;">
+          <div class="metric-card" style="margin-bottom:8px;"><div class="m-label">SD1 (short-term variability)</div><div class="m-value" id="sd1Val">—</div></div>
+          <div class="metric-card"><div class="m-label">SD2 (long-term variability)</div><div class="m-value" id="sd2Val">—</div></div>
+        </div>
+      </div>
+      <div class="hint">Each point plots one beat-to-beat interval against the next. A wider, more scattered
+        cloud generally reflects healthier short-term variability; a narrow, compressed line reflects reduced
+        variability. SD1/SD2 are derived directly from the RMSSD/SDNN values above using the standard textbook
+        relationship, not measured independently.</div>
+    </div>
+
+    <div class="report-section-title">Mean Pulse Wave</div>
+    <div id="pulseWaveBox" style="display:none;">
+      <canvas class="trace" id="pulseWaveCanvas" style="height:100px;"></canvas>
+      <div class="hint">Ensemble average of <span id="pulseWaveBeatCount">—</span> individual detected beats,
+        each time-normalized and shape-normalized before averaging. Shows the canonical shape of your pulse
+        waveform (rise and decay pattern) for this session; the vertical axis is a normalized shape scale, not a
+        calibrated physical unit, so amplitude here isn't independently meaningful with this camera setup.</div>
+    </div>
+
+    <div class="report-section-title">Pupillary Light Reflex Summary</div>
+    <div id="reportPlrBox"></div>
+
+    <div class="report-section-title">Eye Movement Summary</div>
+    <div id="reportEomBox"></div>
+
+    <div class="report-section-title">Bilateral Flow Assessment</div>
+    <div class="hint"><b>Not available on this device.</b> A genuine left/right vascular symmetry ("bilateral
+      flow") assessment requires two PPG sensors reading simultaneously (e.g. both hands measured at once). A
+      single phone camera can only sample one site at a time — sequential left-then-right scans are not
+      equivalent to simultaneous bilateral measurement and would misrepresent this capability, so it's
+      intentionally omitted rather than approximated.</div>
+
+    <div class="report-section-title">Disclaimer</div>
     <div class="hint" id="reportDisclaimer"></div>
+    <div class="hint">This report is generated by a consumer smartphone camera and touchscreen wellness app. It is
+      <b>not a medical device</b>, is <b>not FDA cleared</b>, and does not diagnose any condition. Heart rate
+      is a reasonably well-established camera-PPG measurement; HRV, respiration, LF/HF, and pupillary metrics are
+      rougher estimates with known limitations documented throughout this app. Do not use this report to make
+      medical decisions — consult a licensed clinician for any health concern.</div>
   </div>
 
   <footer>
@@ -542,7 +620,7 @@ function beginScan(torchOn) {
     running = true;
     scanStartTime = performance.now();
     times = []; filtered = []; dcBaseline = null; smoothBuf = []; rising = false;
-    peaks = []; correctedIntervals = [];
+    peaks = []; correctedIntervals = []; beatShapes = [];
     missedBeatCount = 0; pauseCount = 0; doubleDetectionCount = 0; rawIntervalCount = 0;
     finalTimeResult = null; finalFreqResult = null;
 
@@ -657,8 +735,37 @@ function detectPeak(ac, now) {
     if (wasRising && !rising && sinceLastPeak > MIN_PEAK_GAP_MS && isProminent) {
         const prevPeakTime = peaks.length ? peaks[peaks.length - 1] : null;
         peaks.push(now);
-        if (prevPeakTime !== null) recordInterval(now - prevPeakTime);
+        if (prevPeakTime !== null) { recordInterval(now - prevPeakTime); captureBeatShape(prevPeakTime, now); }
     }
+}
+
+// Captures one full beat-cycle of the (unsmoothed-for-display) filtered AC
+// signal between two consecutive peaks, resampled to a fixed point count so
+// beats of slightly different raw sample-density (frame rate isn't perfectly
+// constant) can still be pointwise-averaged together later. Captured
+// incrementally as each peak fires — the live display buffers get trimmed
+// to ~20s for performance, so this is the only way to retain beat shapes
+// from earlier in a long continuous-mode session.
+const BEAT_SHAPE_POINTS = 40;
+const MAX_STORED_BEAT_SHAPES = 40;
+let beatShapes = [];
+function captureBeatShape(prevPeakTime, currPeakTime) {
+    const startIdx = times.findIndex(t => Math.abs(t - prevPeakTime) < 5);
+    const endIdx = times.findIndex(t => Math.abs(t - currPeakTime) < 5);
+    if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) return;
+    const segment = filtered.slice(startIdx, endIdx + 1);
+    if (segment.length < 4) return;
+    const resampled = new Array(BEAT_SHAPE_POINTS);
+    for (let i = 0; i < BEAT_SHAPE_POINTS; i++) {
+        const pos = (i / (BEAT_SHAPE_POINTS - 1)) * (segment.length - 1);
+        const lo = Math.floor(pos), hi = Math.min(segment.length - 1, lo + 1);
+        const frac = pos - lo;
+        resampled[i] = segment[lo] * (1 - frac) + segment[hi] * frac;
+    }
+    const mn = Math.min(...resampled), mx = Math.max(...resampled);
+    const range = (mx - mn) || 1;
+    beatShapes.push(resampled.map(v => (v - mn) / range)); // normalized 0-1, shape only — amplitude isn't clinically meaningful with this camera setup
+    if (beatShapes.length > MAX_STORED_BEAT_SHAPES) beatShapes.shift();
 }
 
 // Classifies each beat-to-beat gap as normal / double-detection / likely
@@ -1004,6 +1111,7 @@ function renderAutonomicReport() {
 
     document.getElementById('reportMarker').style.left = result.sympatheticScore + '%';
     document.getElementById('reportDescription').textContent = result.description;
+    document.getElementById('reportDate').textContent = new Date().toLocaleString();
 
     const rows = [
         ['Activation Index', result.sympatheticScore + ' / 100'],
@@ -1022,7 +1130,122 @@ function renderAutonomicReport() {
         diagnosis. Terms like "sustained strain" and "depletion" describe a single-session physiological pattern,
         not a confirmed chronic or clinical condition. Pupillary (PLR) results are shown separately above and are
         not factored into this score, given their known measurement variability.`;
+
+    renderPoincareSection();
+    renderMeanPulseWaveSection();
+    renderReportPlrSummary();
+    renderReportEomSummary();
 }
+
+/* ---------- Poincaré (RR scatter) plot ---------- */
+// SD1/SD2 derived from already-validated RMSSD/SDNN via the standard
+// textbook relationship, rather than recomputing from scratch — cross-
+// checked against direct geometric computation on synthetic data before
+// shipping (see project test suite): SD1 = RMSSD/sqrt(2),
+// SD2 = sqrt(2*SDNN^2 - 0.5*RMSSD^2).
+function computePoincare() {
+    if (!finalTimeResult || finalTimeResult.rmssd === null || finalTimeResult.sdnn === null || correctedIntervals.length < 5) return null;
+    const rmssd = finalTimeResult.rmssd, sdnn = finalTimeResult.sdnn;
+    const sd1 = rmssd / Math.sqrt(2);
+    const sd2 = Math.sqrt(Math.max(0, 2 * sdnn * sdnn - 0.5 * rmssd * rmssd));
+    const pairs = [];
+    for (let i = 0; i < correctedIntervals.length - 1; i++) pairs.push([correctedIntervals[i], correctedIntervals[i + 1]]);
+    return { sd1, sd2, pairs };
+}
+
+function drawPoincarePlot(canvasEl, pairs, sd1, sd2) {
+    const c = canvasEl.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvasEl.clientWidth || 220, cssH = canvasEl.clientHeight || 220;
+    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, cssW, cssH);
+    if (pairs.length < 3) return;
+
+    const allVals = pairs.flat();
+    const mn = Math.min(...allVals) - 30, mx = Math.max(...allVals) + 30;
+    const range = (mx - mn) || 1;
+    const pad = 14;
+    const toPix = v => pad + ((v - mn) / range) * (Math.min(cssW, cssH) - 2 * pad);
+
+    c.strokeStyle = '#22352E'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(pad, cssH - pad); c.lineTo(cssW - pad, pad); c.stroke(); // identity line
+
+    c.fillStyle = 'rgba(179,153,240,0.55)';
+    pairs.forEach(([x, y]) => {
+        const px = toPix(x), py = cssH - toPix(y);
+        c.beginPath(); c.arc(px, py, 2.4, 0, Math.PI * 2); c.fill();
+    });
+}
+
+function renderPoincareSection() {
+    const box = document.getElementById('poincareBox');
+    const p = computePoincare();
+    if (!p) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    drawPoincarePlot(document.getElementById('poincareCanvas'), p.pairs, p.sd1, p.sd2);
+    document.getElementById('sd1Val').textContent = p.sd1.toFixed(1) + ' ms';
+    document.getElementById('sd2Val').textContent = p.sd2.toFixed(1) + ' ms';
+}
+
+/* ---------- Mean (ensemble-averaged) pulse wave ---------- */
+function computeMeanPulseWave() {
+    if (beatShapes.length < 5) return null;
+    const n = BEAT_SHAPE_POINTS;
+    const mean = new Array(n).fill(0);
+    beatShapes.forEach(shape => shape.forEach((v, i) => mean[i] += v));
+    for (let i = 0; i < n; i++) mean[i] /= beatShapes.length;
+    return { mean, beatCount: beatShapes.length };
+}
+
+function drawMeanPulseWave(canvasEl, mean) {
+    const c = canvasEl.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvasEl.clientWidth || 300, cssH = canvasEl.clientHeight || 110;
+    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, cssW, cssH);
+    const pad = 10;
+    c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--violet').trim();
+    c.lineWidth = 2; c.beginPath();
+    mean.forEach((v, i) => {
+        const x = pad + (i / (mean.length - 1)) * (cssW - 2 * pad);
+        const y = cssH - pad - v * (cssH - 2 * pad);
+        if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    });
+    c.stroke();
+}
+
+function renderMeanPulseWaveSection() {
+    const box = document.getElementById('pulseWaveBox');
+    const r = computeMeanPulseWave();
+    if (!r) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    drawMeanPulseWave(document.getElementById('pulseWaveCanvas'), r.mean);
+    document.getElementById('pulseWaveBeatCount').textContent = r.beatCount;
+}
+
+/* ---------- Condensed PLR / EOM summaries for the report ---------- */
+function renderReportPlrSummary() {
+    const box = document.getElementById('reportPlrBox');
+    if (!finalPupilResultGlobal) { box.innerHTML = '<div class="hint">Pupillary Light Reflex test not run this session.</div>'; return; }
+    const r = finalPupilResultGlobal;
+    box.innerHTML = `
+        <div class="metric-row cols3">
+            <div class="metric-card"><div class="m-label">Peak Constriction</div><div class="m-value">${r.avgConstriction.toFixed(1)}%</div></div>
+            <div class="metric-card"><div class="m-label">Latency</div><div class="m-value">${r.latencyMs !== null ? Math.round(r.latencyMs) : '—'}</div><div class="m-sub">ms</div></div>
+            <div class="metric-card"><div class="m-label">Recovery</div><div class="m-value">${r.recoveryMs !== null ? Math.round(r.recoveryMs) : '—'}</div><div class="m-sub">ms</div></div>
+        </div>`;
+}
+function renderReportEomSummary() {
+    const box = document.getElementById('reportEomBox');
+    if (!eomStepResults || eomStepResults.length === 0) { box.innerHTML = '<div class="hint">Guided eye movement test not run this session.</div>'; return; }
+    const passed = eomStepResults.filter(r => r.match).length;
+    box.innerHTML = `<div class="hint">${passed} of ${eomStepResults.length} directions tracked successfully this session.
+        ${fixationResult ? (fixationResult.oscillationDetected ? 'A rhythmic gaze pattern was flagged during fixation — see Eye Movement panel above for detail.' : 'No rhythmic gaze oscillation flagged during fixation.') : ''}</div>`;
+}
+
+document.getElementById('printReportBtn')?.addEventListener('click', () => window.print());
 
 /* ================================================================
    SECTION 7 — HISTORY (localStorage)
