@@ -252,6 +252,11 @@
       movement in four directions, then a brief fixation-stability check. Not a substitute for a clinical exam;
       cannot detect true ocular torsion (rotation) or fast (VNG-grade) nystagmus, which need equipment beyond a
       consumer webcam.</div>
+    <div class="hint">Known limitation: downward gaze narrows the visible eyelid opening in a way that's hard to
+      tell apart from a genuine blink using this front-camera technique, so the "down" direction is tracked less
+      reliably than up/right/left — sometimes it registers, sometimes it doesn't, across otherwise-identical
+      conditions. Up, right, and left have tested reliably across lighting, distance, and phone-angle variations.
+      Treat a "down" result here with lower confidence than the other three directions.</div>
     <div class="cam-shell" style="aspect-ratio:1/1; max-width:260px; margin:0 auto; border-radius:50%;">
       <video id="eom-video" autoplay playsinline muted></video>
       <div class="guide" id="eomGuideRing" style="width:88%; aspect-ratio:1;"></div>
@@ -1235,8 +1240,8 @@ function renderPupilTrace() {
 function summarizePlrChecklist() {
     plrChecklist.style.display = 'flex';
     const rows = [];
-    const samplesA = smoothPupilSeries(rejectOutlierFrames(pupilSamplesA.filter(s => s.pupilMm !== null), 0.25));
-    const samplesB = smoothPupilSeries(rejectOutlierFrames(pupilSamplesB.filter(s => s.pupilMm !== null), 0.25));
+    const samplesA = smoothPupilSeries(pupilSamplesA.filter(s => s.pupilMm !== null));
+    const samplesB = smoothPupilSeries(pupilSamplesB.filter(s => s.pupilMm !== null));
     const validA = pupilBaselineA !== null && samplesA.length >= 5;
     const validB = pupilBaselineB !== null && samplesB.length >= 5;
     const visibilityRate = totalPupilFrames > 0 ? faceDetectedFrames / totalPupilFrames : 0;
@@ -1268,8 +1273,8 @@ function summarizePlrChecklist() {
     // constriction response.
     const postFlashA = flashTimeMs !== null ? samplesA.filter(s => s.t >= flashTimeMs) : samplesA;
     const postFlashB = flashTimeMs !== null ? samplesB.filter(s => s.t >= flashTimeMs) : samplesB;
-    const minA = validA && postFlashA.length > 0 ? robustMinimum(postFlashA.map(s => s.pupilMm)) : null;
-    const minB = validB && postFlashB.length > 0 ? robustMinimum(postFlashB.map(s => s.pupilMm)) : null;
+    const minA = validA && postFlashA.length > 0 ? Math.min(...postFlashA.map(s => s.pupilMm)) : null;
+    const minB = validB && postFlashB.length > 0 ? Math.min(...postFlashB.map(s => s.pupilMm)) : null;
     const constrictionA = validA && minA !== null ? ((pupilBaselineA - minA) / pupilBaselineA) * 100 : null;
     const constrictionB = validB && minB !== null ? ((pupilBaselineB - minB) / pupilBaselineB) * 100 : null;
     const constrictions = [constrictionA, constrictionB].filter(v => v !== null);
@@ -1336,38 +1341,19 @@ function summarizePlrChecklist() {
 // Short centered moving average to reduce single-frame measurement noise
 // before extracting a minimum — a raw single-frame minimum is much more
 // exposed to per-frame noise than a value drawn from a smoothed series.
-// Rejects single-frame jumps too large to be real pupillary movement (which
-// happens over hundreds of ms, not one camera frame) — catches blink/glare/
-// eyelash artifacts before they can pollute the smoothed series or the min.
-function rejectOutlierFrames(samples, maxChangeFraction) {
-    if (samples.length < 2) return samples;
-    const cleaned = [samples[0]];
-    let lastGood = samples[0].pupilMm;
-    for (let i = 1; i < samples.length; i++) {
-        const change = Math.abs(samples[i].pupilMm - lastGood) / lastGood;
-        if (change > maxChangeFraction) continue;
-        cleaned.push(samples[i]);
-        lastGood = samples[i].pupilMm;
-    }
-    return cleaned;
-}
-
-// Average of the lowest ~10% of values, instead of the single minimum — a
-// raw minimum is the statistic most exposed to a single surviving outlier;
-// this stays close to a true minimum on clean data but is far more resistant
-// to one bad frame slipping through. Validated against a synthetic series
-// with a real ~3.4mm dip plus injected artifact spikes down to ~1.2mm before
-// shipping: raw-minimum approach returned ~1.4mm (fooled by the artifacts),
-// this approach returned ~4.6mm (close to the true ~4.0mm dip).
-function robustMinimum(values) {
-    const sorted = [...values].sort((a, b) => a - b);
-    const n = Math.max(1, Math.round(sorted.length * 0.1));
-    const lowest = sorted.slice(0, n);
-    return lowest.reduce((a, b) => a + b, 0) / lowest.length;
-}
-
+//
+// NOTE: an outlier-rejection + "lowest 10%" robust-minimum variant was
+// tried here and reverted. It assumed real pupillary constriction always
+// changes gradually frame-to-frame, but real PLR response can be fast
+// enough (a few frames) that the rejection filter was discarding the
+// genuine constriction dip itself along with actual artifacts — leaving
+// mostly post-flash noise behind, which on real test data produced
+// nonsensical negative "constriction" (apparent dilation) instead of the
+// previous version's correct-direction-but-oversized readings. Simple
+// smoothing + raw minimum empirically produced more reliable Yes/No
+// verdicts on real devices than the "more sophisticated" version did.
 function smoothPupilSeries(samples, windowSize) {
-    windowSize = windowSize || 5;
+    windowSize = windowSize || 3;
     if (samples.length < windowSize) return samples;
     const half = Math.floor(windowSize / 2);
     return samples.map((s, i) => {
