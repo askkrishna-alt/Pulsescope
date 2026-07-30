@@ -12,6 +12,7 @@
     --trace: #4FD9C4; --trace-dim: rgba(79,217,196,0.25);
     --amber: #F0B429; --amber-dim: rgba(240,180,41,0.15);
     --violet: #B399F0; --coral: #E5686B; --coral-dim: rgba(229,104,107,0.15);
+    --burnt: #E0672A;
     --text: #E7F3EE; --muted: #7C948C; --line: #22352E; --danger: #E5686B;
   }
   *{box-sizing:border-box;}
@@ -100,11 +101,6 @@
   .band-legend{ display:flex; gap:14px; font-size:10.5px; color:var(--muted); margin-top:6px; }
   .band-legend .dot{ display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; vertical-align:middle; }
 
-  .touchpad{ width:100%; height:96px; background:#0D1915; border:1px dashed var(--line); border-radius:12px;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--muted); font-size:12.5px; gap:4px; touch-action:none; user-select:none; }
-  .touchpad.active{ border-color:var(--trace); border-style:solid; color:var(--text); }
-  .touchpad .live-nums{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--muted); }
-
   .checklist{ display:flex; flex-direction:column; gap:8px; margin-top:10px; }
   .check-row{ display:flex; justify-content:space-between; align-items:center; background:#0D1915; border:1px solid var(--line);
     border-radius:8px; padding:9px 12px; font-size:12.5px; }
@@ -121,6 +117,22 @@
   td{ padding:7px 6px; border-bottom:1px solid var(--line); }
 
   .hint{ font-size:11.5px; color:var(--muted); line-height:1.5; margin-top:10px; border-left:2px solid var(--line); padding-left:9px; }
+
+  .report-state-name{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:21px; text-align:center;
+    padding:6px 0 2px; letter-spacing:-.01em; }
+  .report-state-name.state-calm{ color:var(--trace); }
+  .report-state-name.state-mild{ color:var(--violet); }
+  .report-state-name.state-acute{ color:var(--amber); }
+  .report-state-name.state-chronic{ color:var(--burnt); }
+  .report-state-name.state-depleted{ color:var(--coral); }
+  .state-spectrum{ position:relative; height:8px; border-radius:5px; margin:12px 2px 4px;
+    background: linear-gradient(90deg,
+      var(--trace) 0%, var(--trace) 25%,
+      var(--violet) 25%, var(--violet) 45%,
+      var(--amber) 45%, var(--amber) 70%,
+      var(--coral) 70%, var(--coral) 100%); }
+  .state-spectrum-marker{ position:absolute; top:-3px; width:3px; height:14px; background:#fff;
+    border-radius:2px; box-shadow:0 0 4px rgba(0,0,0,.6); transform:translateX(-50%); }
   .hint b{ color:var(--text); }
   footer{ margin-top:22px; font-size:11.5px; color:var(--muted); line-height:1.6; border-top:1px solid var(--line); padding-top:14px; }
 
@@ -132,7 +144,7 @@
   <header>
     <div class="eyebrow">rPPG · touch · pupillary reflex</div>
     <h1>Autonomic Vitality Engine</h1>
-    <div class="sub">Estimates heart rate, HRV (RMSSD, SDNN), respiration, grip steadiness, and pupillary
+    <div class="sub">Estimates heart rate, HRV (RMSSD, SDNN), respiration, and pupillary
       light reflex from your camera and touchscreen — no external sensors.</div>
     <div class="disclaimer">
       <span>⚠</span>
@@ -207,14 +219,6 @@
     <div class="interp-box" id="interpBox">Interpretation appears once enough beats are captured.</div>
   </div>
 
-  <!-- ===================== GRIP PANEL ===================== -->
-  <div class="panel">
-    <div class="panel-label"><span>Touch Pressure — Grip Steadiness</span></div>
-    <div class="touchpad" id="touchpad"><span>Rest a fingertip here during the scan — <span id="gripLive">idle</span></span>
-      <span class="live-nums" id="gripLiveNums">pressure: -- · size: --</span></div>
-    <div class="interp-box" id="gripInterp">Not a sweat/sudomotor sensor — a touchscreen cannot sense skin conductance. This reads touch pressure and contact-area stability only.</div>
-  </div>
-
   <!-- ===================== PLR PANEL ===================== -->
   <div class="panel">
     <div class="panel-label"><span>Pupillary Light Reflex (PLR)</span></div>
@@ -271,9 +275,20 @@
   <div class="panel">
     <div class="panel-label"><span>History (this device/browser only)</span><button class="secondary" id="clearHistoryBtn">Clear</button></div>
     <table>
-      <thead><tr><th>Time</th><th>HR</th><th>RMSSD</th><th>SDNN</th><th>RR</th><th>LF/HF</th><th>Conf.</th></tr></thead>
-      <tbody id="historyBody"><tr><td colspan="7" style="color:var(--muted); text-align:center; padding:12px;">No readings yet</td></tr></tbody>
+      <thead><tr><th>Time</th><th>HR</th><th>RMSSD</th><th>SDNN</th><th>RR</th><th>LF/HF</th><th>Conf.</th><th>State</th></tr></thead>
+      <tbody id="historyBody"><tr><td colspan="8" style="color:var(--muted); text-align:center; padding:12px;">No readings yet</td></tr></tbody>
     </table>
+  </div>
+
+  <!-- ===================== AUTONOMIC STATE REPORT ===================== -->
+  <div class="panel" id="reportPanel" style="display:none;">
+    <div class="panel-label"><span>Autonomic State Report</span></div>
+    <div class="report-state-name" id="reportStateName">—</div>
+    <div class="state-spectrum"><div class="state-spectrum-marker" id="reportMarker" style="left:50%;"></div></div>
+    <div class="amp-row" style="margin-top:2px;"><span>Calm</span><span>Mild</span><span>Acute</span><span>Sustained / Depleted</span></div>
+    <div class="interp-box" id="reportDescription" style="margin-top:14px;"></div>
+    <div class="metric-row cols3" id="reportMetrics"></div>
+    <div class="hint" id="reportDisclaimer"></div>
   </div>
 
   <footer>
@@ -464,10 +479,7 @@ let missedBeatCount = 0, pauseCount = 0, doubleDetectionCount = 0, rawIntervalCo
 const PAUSE_MS = 5000, PAUSE_RATIO = 6, MIN_PLAUSIBLE_MS = 400;
 const PLAUSIBLE_MIN_BPM = 30, PLAUSIBLE_MAX_BPM = 200;
 
-let touchSamples = [];
-let touchActive = false;
-
-let finalTimeResult = null, finalFreqResult = null, finalGripResult = null;
+let finalTimeResult = null, finalFreqResult = null;
 
 const video = document.getElementById('webcam-stream');
 const procCanvas = document.getElementById('proc-canvas');
@@ -489,10 +501,6 @@ const qualityHint = document.getElementById('qualityHint');
 const freqPanel = document.getElementById('freqPanel');
 const freqConfidence = document.getElementById('freqConfidence');
 const spectrumCanvas = document.getElementById('spectrum-canvas');
-const touchpad = document.getElementById('touchpad');
-const gripLive = document.getElementById('gripLive');
-const gripLiveNums = document.getElementById('gripLiveNums');
-const gripInterp = document.getElementById('gripInterp');
 const historyBody = document.getElementById('historyBody');
 
 /* ================================================================
@@ -536,8 +544,7 @@ function beginScan(torchOn) {
     times = []; filtered = []; dcBaseline = null; smoothBuf = []; rising = false;
     peaks = []; correctedIntervals = [];
     missedBeatCount = 0; pauseCount = 0; doubleDetectionCount = 0; rawIntervalCount = 0;
-    touchSamples = [];
-    finalTimeResult = null; finalFreqResult = null; finalGripResult = null;
+    finalTimeResult = null; finalFreqResult = null;
 
     mode30Btn.disabled = true; modeContBtn.disabled = true;
     mainBtn.textContent = 'Stop'; mainBtn.classList.add('stop');
@@ -589,9 +596,9 @@ function stopCapture() {
 
     finalTimeResult = computeTimeDomainHRV();
     finalFreqResult = runFrequencyAnalysis();
-    finalGripResult = computeGripStability(touchSamples);
     renderFinalResults();
     if (finalFreqResult) { freqPanel.style.display = 'block'; renderFrequencyResult(finalFreqResult, false); }
+    renderAutonomicReport();
     saveHistoryEntry();
 }
 
@@ -781,7 +788,6 @@ function renderFinalResults() {
         qualityHint.innerHTML = `<b>No pulse detected.</b> Press your fingertip firmly over both the camera lens
             and the flash, avoid gaps where light leaks in, keep the phone still. If your device doesn't
             support browser flash control (common on iPhone/Safari), try a well-lit room instead.`;
-        gripInterp.textContent = 'Not a sweat/sudomotor sensor — a touchscreen cannot sense skin conductance. This reads touch pressure and contact-area stability only.';
         return;
     }
     bpmNumber.textContent = finalTimeResult.avgBpm; bpmNumber.classList.remove('dim');
@@ -798,48 +804,6 @@ function renderFinalResults() {
     if (pauseCount > 0) hintHtml += ` ${pauseCount} gap(s) looked like a contact interruption and were excluded.`;
     if (doubleDetectionCount > 0) hintHtml += ` ${doubleDetectionCount} implausibly-close detection(s) were merged.`;
     qualityHint.innerHTML = hintHtml;
-
-    const grip = finalGripResult;
-    if (grip && grip.stabilityScore !== null) {
-        const label = grip.stabilityScore >= 75 ? 'Steady contact' : grip.stabilityScore >= 45 ? 'Some fidgeting / pressure variation' : 'Unstable contact — lots of pressure variation';
-        gripInterp.innerHTML = `<b>${label}</b> — stability score ${grip.stabilityScore}% (basis: ${grip.basis === 'contact-area' ? 'contact-area — your device did not report analog touch pressure' : 'touch pressure'}, ${grip.sampleCount} samples). Not a sweat/sudomotor measurement.`;
-    } else {
-        gripInterp.textContent = 'No usable touch data captured this scan — try resting your finger on the pad for longer next time. Not a sweat/sudomotor sensor.';
-    }
-}
-
-/* ================================================================
-   SECTION 5 — GRIP METRIC
-   ================================================================ */
-touchpad.addEventListener('pointerdown', e => { touchActive = true; touchpad.classList.add('active'); recordTouchSample(e); });
-touchpad.addEventListener('pointermove', e => { if (touchActive) recordTouchSample(e); });
-touchpad.addEventListener('pointerup', () => { touchActive = false; touchpad.classList.remove('active'); });
-touchpad.addEventListener('pointercancel', () => { touchActive = false; touchpad.classList.remove('active'); });
-touchpad.addEventListener('pointerleave', () => { touchActive = false; touchpad.classList.remove('active'); });
-
-function recordTouchSample(e) {
-    const pressure = typeof e.pressure === 'number' ? e.pressure : 0;
-    const size = typeof e.width === 'number' ? e.width : 0;
-    touchSamples.push({ t: performance.now(), pressure, size });
-    gripLiveNums.textContent = `pressure: ${pressure.toFixed(2)} · size: ${size.toFixed(1)}px`;
-    gripLive.textContent = 'contact detected';
-}
-touchpad.addEventListener('pointerup', () => { gripLive.textContent = 'idle'; });
-
-function computeGripStability(samples) {
-    if (samples.length < 4) return null;
-    const pressures = samples.map(s => s.pressure);
-    const sizes = samples.map(s => s.size).filter(s => s > 0);
-    const pressureVaries = pressures.some(p => p > 0) && (Math.max(...pressures) - Math.min(...pressures) > 0.001);
-    let basis, values;
-    if (pressureVaries) { basis = 'pressure'; values = pressures.filter(p => p > 0); }
-    else if (sizes.length >= 4) { basis = 'contact-area'; values = sizes; }
-    else return { stabilityScore: null, basis: 'none', sampleCount: samples.length };
-    if (values.length < 4) return { stabilityScore: null, basis, sampleCount: samples.length };
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    const variance = values.reduce((a, b) => a + (b - mean) * (b - mean), 0) / values.length;
-    const cv = mean > 0 ? Math.sqrt(variance) / mean : 1;
-    return { stabilityScore: Math.max(0, Math.min(100, Math.round(100 - cv * 150))), basis, sampleCount: values.length };
 }
 
 /* ================================================================
@@ -956,12 +920,118 @@ function drawSpectrumChart(canvasEl, freqs, psd) {
 }
 
 /* ================================================================
+   SECTION 6.5 — AUTONOMIC STATE REPORT
+   Combines the (already-validated) HR/RMSSD/SDNN/frequency-domain
+   pipeline above into a single plain-language classification along
+   a calm <-> depleted spectrum. This is a HEURISTIC wellness
+   composite, not a validated clinical staging instrument — no such
+   instrument exists that stages "chronic wear" or "exhaustion" from
+   a single short consumer-camera scan. The acute/chronic/depleted
+   split specifically uses total spectral power (or SDNN as a
+   fallback) as a rough proxy for overall autonomic "reserve",
+   distinct from the sympathetic/parasympathetic balance itself —
+   grounded in the general HRV-literature idea that acute stress
+   shifts the balance between bands without necessarily suppressing
+   overall variability, while prolonged stress/exhaustion tends to
+   suppress it globally. PLR results are deliberately NOT fed into
+   this score, given their documented measurement noise elsewhere in
+   this app — they're shown separately, for context only.
+   ================================================================ */
+function computeAutonomicState() {
+    if (!finalTimeResult) return null;
+    const rmssd = finalTimeResult.rmssd;
+    const sdnn = finalTimeResult.sdnn;
+    const avgBpm = finalTimeResult.avgBpm;
+    const freq = finalFreqResult;
+
+    const components = [];
+    if (rmssd !== null) components.push({ v: Math.max(0, Math.min(100, 100 - (rmssd / 70) * 100)), w: 0.45 });
+    if (freq && freq.hfNu !== null) components.push({ v: Math.max(0, Math.min(100, 100 - freq.hfNu)), w: 0.35 });
+    if (freq && freq.breathingBpm) {
+        const bpm = freq.breathingBpm;
+        const rrScore = bpm <= 10 ? 0 : bpm >= 30 ? 100 : ((bpm - 10) / 20) * 100;
+        components.push({ v: rrScore, w: 0.10 });
+    }
+    const hrScore = avgBpm <= 65 ? 0 : avgBpm >= 100 ? Math.min(100, 60 + (avgBpm - 100)) : ((avgBpm - 65) / 35) * 60;
+    components.push({ v: hrScore, w: 0.10 });
+
+    const totalW = components.reduce((a, c) => a + c.w, 0);
+    const sympatheticScore = components.reduce((a, c) => a + c.v * c.w, 0) / totalW;
+
+    let reserveLow = false, reserveBasis = null;
+    if (freq && freq.totalPower !== null && freq.totalPower !== undefined) {
+        reserveLow = freq.totalPower < 50;
+        reserveBasis = 'total spectral power (' + freq.totalPower.toFixed(1) + ' ms²)';
+    } else if (sdnn !== null) {
+        reserveLow = sdnn < 20;
+        reserveBasis = 'SDNN (' + sdnn + ' ms) — frequency-domain data unavailable this scan';
+    }
+
+    let stateKey, state, description;
+    if (sympatheticScore < 25) {
+        stateKey = 'calm'; state = 'Calm / Relaxed State';
+        description = 'Readings show a pattern typically associated with rest-and-digest (parasympathetic-leaning) activity: relatively high heart rate variability, an unhurried breathing rate, and a heart rate on the lower end of a typical range.';
+    } else if (sympatheticScore < 45) {
+        stateKey = 'mild'; state = 'Mild Alertness';
+        description = 'Readings sit in a moderate, everyday-functioning range — neither strongly relaxed nor strongly activated. This is a common pattern during normal daily activity, focus, or mild anticipation.';
+    } else if (!reserveLow) {
+        stateKey = 'acute'; state = 'Acute Fight-or-Flight Pattern';
+        description = 'Readings show a pattern typically associated with acute sympathetic activation — lower heart rate variability, a faster or shallower breathing pattern, and/or an elevated heart rate — while overall autonomic capacity (' + (reserveBasis || 'variability') + ') still looks reasonably intact. This often reflects a short-term response: the test itself, caffeine, recent activity, or a recent stressor, rather than an ongoing state.';
+    } else if (sympatheticScore < 70) {
+        stateKey = 'chronic'; state = 'Sustained Strain Pattern';
+        description = 'Readings combine sympathetic-leaning activation with reduced overall heart rate variability (' + (reserveBasis || 'lower reserve') + '), a pattern sometimes associated in the HRV literature with prolonged or repeated stress exposure rather than a single acute moment. One scan cannot establish that this is genuinely ongoing — check History below for whether this pattern repeats across separate sessions before drawing that conclusion.';
+    } else {
+        stateKey = 'depleted'; state = 'Significant Depletion Pattern';
+        description = 'Readings show both strong sympathetic-leaning activation and markedly reduced overall heart rate variability (' + (reserveBasis || 'lower reserve') + ') — a combination sometimes described in HRV research as consistent with prolonged stress, overtraining, or exhaustion. This describes a pattern in a single snapshot reading, not a diagnosis of clinical exhaustion, burnout, or any medical condition — those require clinical evaluation and a history of symptoms over time. If this persists across repeated tests, or you have symptoms of exhaustion, it is worth discussing with a clinician.';
+    }
+
+    return {
+        stateKey, state, description, sympatheticScore: Math.round(sympatheticScore),
+        reserveLow, rmssd, sdnn, hfNu: freq ? freq.hfNu : null, lfHfRatio: freq ? freq.lfHfRatio : null,
+        totalPower: freq ? freq.totalPower : null, breathingBpm: freq ? freq.breathingBpm : null, avgBpm
+    };
+}
+
+function renderAutonomicReport() {
+    const reportPanel = document.getElementById('reportPanel');
+    const result = computeAutonomicState();
+    if (!result) { reportPanel.style.display = 'none'; return; }
+    reportPanel.style.display = 'flex';
+
+    const nameEl = document.getElementById('reportStateName');
+    nameEl.textContent = result.state;
+    nameEl.className = 'report-state-name state-' + result.stateKey;
+
+    document.getElementById('reportMarker').style.left = result.sympatheticScore + '%';
+    document.getElementById('reportDescription').textContent = result.description;
+
+    const rows = [
+        ['Activation Index', result.sympatheticScore + ' / 100'],
+        ['RMSSD', result.rmssd !== null ? result.rmssd + ' ms' : '—'],
+        ['HF (normalized)', result.hfNu !== null ? result.hfNu.toFixed(0) + '%' : '—'],
+        ['LF/HF Ratio', result.lfHfRatio !== null ? result.lfHfRatio.toFixed(2) : '—'],
+        ['Total Power', result.totalPower !== null ? result.totalPower.toFixed(1) + ' ms²' : '—'],
+        ['Respiration', result.breathingBpm ? result.breathingBpm + ' br/min' : '—'],
+    ];
+    document.getElementById('reportMetrics').innerHTML = rows.map(([label, value]) => `
+        <div class="metric-card"><div class="m-label">${label}</div><div class="m-value">${value}</div></div>
+    `).join('');
+
+    document.getElementById('reportDisclaimer').innerHTML = `This is a heuristic wellness composite built from the
+        HR/HRV/respiration measurements above — it is <b>not a validated clinical staging instrument</b> and not a
+        diagnosis. Terms like "sustained strain" and "depletion" describe a single-session physiological pattern,
+        not a confirmed chronic or clinical condition. Pupillary (PLR) results are shown separately above and are
+        not factored into this score, given their known measurement variability.`;
+}
+
+/* ================================================================
    SECTION 7 — HISTORY (localStorage)
    ================================================================ */
 function loadHistory() { try { const raw = localStorage.getItem(HISTORY_KEY); return raw ? JSON.parse(raw) : []; } catch (e) { return []; } }
 function saveHistoryEntry() {
     if (!finalTimeResult) return;
     const history = loadHistory();
+    const state = computeAutonomicState();
     history.unshift({
         time: new Date().toISOString(),
         hr: finalTimeResult.avgBpm,
@@ -969,7 +1039,9 @@ function saveHistoryEntry() {
         sdnn: finalTimeResult.sdnn,
         rr: finalFreqResult && finalFreqResult.breathingBpm ? finalFreqResult.breathingBpm : null,
         lfhf: finalFreqResult && finalFreqResult.lfHfRatio !== null ? finalFreqResult.lfHfRatio.toFixed(2) : null,
-        confidence: finalTimeResult.confidence
+        confidence: finalTimeResult.confidence,
+        state: state ? state.state : null,
+        stateKey: state ? state.stateKey : null
     });
     if (history.length > 50) history.length = 50;
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch (e) { /* storage unavailable */ }
@@ -977,13 +1049,14 @@ function saveHistoryEntry() {
 }
 function renderHistory() {
     const history = loadHistory();
-    if (history.length === 0) { historyBody.innerHTML = `<tr><td colspan="7" style="color:var(--muted); text-align:center; padding:12px;">No readings yet</td></tr>`; return; }
+    if (history.length === 0) { historyBody.innerHTML = `<tr><td colspan="8" style="color:var(--muted); text-align:center; padding:12px;">No readings yet</td></tr>`; return; }
     historyBody.innerHTML = history.map(h => {
         const d = new Date(h.time);
         return `<tr>
             <td>${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
             <td>${h.hr ?? '—'}</td><td>${h.rmssd ?? '—'}</td><td>${h.sdnn ?? '—'}</td>
             <td>${h.rr ?? '—'}</td><td>${h.lfhf ?? '—'}</td><td>${h.confidence ?? '—'}</td>
+            <td style="${h.stateKey ? 'color:var(--' + (h.stateKey === 'chronic' ? 'burnt' : h.stateKey === 'depleted' || h.stateKey === 'acute' ? 'coral' : h.stateKey === 'mild' ? 'violet' : 'trace') + ')' : ''}">${h.state ?? '—'}</td>
         </tr>`;
     }).join('');
 }
