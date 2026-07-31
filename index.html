@@ -323,6 +323,22 @@
     <div class="interp-box" id="reportDescription" style="margin-top:14px;"></div>
     <div class="metric-row cols3" id="reportMetrics"></div>
 
+    <div class="report-section-title">Heart Rate Trend (This Session)</div>
+    <div id="hrTrendBox" style="display:none;">
+      <canvas class="trace" id="hrTrendCanvas" style="height:110px;"></canvas>
+      <div class="hint">Instantaneous heart rate per detected beat across the full session, with a dashed line
+        at the session mean.</div>
+    </div>
+
+    <div class="report-section-title">Sympathetic Activation vs. Autonomic Reserve</div>
+    <div id="balanceQuadrantBox" style="display:none;">
+      <canvas id="balanceQuadrantCanvas" style="width:200px; height:200px;"></canvas>
+      <div class="hint">Plots this session's Activation Index (horizontal) against overall variability/reserve
+        (vertical, from Total Power or SDNN) — the same two-axis logic behind the Calm/Mild/Acute/Sustained/
+        Depleted classification above, shown spatially. The quadrant a point falls in is descriptive, not a
+        clinical grading zone.</div>
+    </div>
+
     <div class="report-section-title">RR-Interval Scatter (Poincaré Plot)</div>
     <div id="poincareBox" style="display:none;">
       <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
@@ -1133,6 +1149,8 @@ function renderAutonomicReport() {
 
     renderPoincareSection();
     renderMeanPulseWaveSection();
+    renderHrTrendSection();
+    renderBalanceQuadrantSection(result);
     renderReportPlrSummary();
     renderReportEomSummary();
 }
@@ -1243,6 +1261,117 @@ function renderReportEomSummary() {
     const passed = eomStepResults.filter(r => r.match).length;
     box.innerHTML = `<div class="hint">${passed} of ${eomStepResults.length} directions tracked successfully this session.
         ${fixationResult ? (fixationResult.oscillationDetected ? 'A rhythmic gaze pattern was flagged during fixation — see Eye Movement panel above for detail.' : 'No rhythmic gaze oscillation flagged during fixation.') : ''}</div>`;
+}
+
+/* ---------- Heart rate trend over the session ---------- */
+// Uses `peaks` (full-session beat timestamps, unlike the display buffers
+// which trim to ~20s) to plot instantaneous HR across the whole scan,
+// including long continuous-mode sessions.
+function computeHrTrend() {
+    if (peaks.length < 4) return null;
+    const points = [];
+    for (let i = 1; i < peaks.length; i++) {
+        const interval = peaks[i] - peaks[i - 1];
+        const bpm = 60000 / interval;
+        if (bpm >= 30 && bpm <= 220) points.push({ t: peaks[i], bpm });
+    }
+    return points.length >= 4 ? points : null;
+}
+
+function drawHrTrend(canvasEl, points) {
+    const c = canvasEl.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvasEl.clientWidth || 300, cssH = canvasEl.clientHeight || 110;
+    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, cssW, cssH);
+    const pad = { left: 30, right: 8, top: 8, bottom: 16 };
+    const plotW = cssW - pad.left - pad.right, plotH = cssH - pad.top - pad.bottom;
+    const bpms = points.map(p => p.bpm);
+    const mn = Math.min(...bpms) - 3, mx = Math.max(...bpms) + 3;
+    const range = (mx - mn) || 1;
+    const t0 = points[0].t, t1 = points[points.length - 1].t, tRange = (t1 - t0) || 1;
+    const xPix = t => pad.left + ((t - t0) / tRange) * plotW;
+    const yPix = v => pad.top + plotH - ((v - mn) / range) * plotH;
+
+    const mean = bpms.reduce((a, b) => a + b, 0) / bpms.length;
+    c.strokeStyle = '#334155'; c.setLineDash([3, 3]); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(pad.left, yPix(mean)); c.lineTo(pad.left + plotW, yPix(mean)); c.stroke();
+    c.setLineDash([]);
+
+    c.fillStyle = '#7C948C'; c.font = '9px monospace'; c.textAlign = 'right';
+    c.fillText(Math.round(mx), pad.left - 4, yPix(mx) + 3);
+    c.fillText(Math.round(mn), pad.left - 4, yPix(mn) + 3);
+
+    c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--trace').trim();
+    c.lineWidth = 1.6; c.beginPath();
+    points.forEach((p, i) => { const x = xPix(p.t), y = yPix(p.bpm); if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); });
+    c.stroke();
+}
+
+function renderHrTrendSection() {
+    const box = document.getElementById('hrTrendBox');
+    const points = computeHrTrend();
+    if (!points) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    drawHrTrend(document.getElementById('hrTrendCanvas'), points);
+}
+
+/* ---------- 2D sympathetic activation / autonomic reserve chart ---------- */
+// Visualizes the same two-axis model already driving the calm/mild/acute/
+// chronic/depleted classification above (sympathetic score + reserve),
+// spatially rather than just as text. Reserve score here is a display-only
+// rescaling of total power (or SDNN) for chart placement — the classification
+// logic itself still uses the reserveLow threshold defined in
+// computeAutonomicState, not this rescaled value.
+function computeReserveScore(result) {
+    if (result.totalPower !== null && result.totalPower !== undefined) return Math.max(0, Math.min(100, (result.totalPower / 150) * 100));
+    if (result.sdnn !== null) return Math.max(0, Math.min(100, (result.sdnn / 60) * 100));
+    return 50;
+}
+
+function drawBalanceQuadrant(canvasEl, sympatheticScore, reserveScore) {
+    const c = canvasEl.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvasEl.clientWidth || 240, cssH = canvasEl.clientHeight || 240;
+    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, cssW, cssH);
+    const pad = 14;
+    const size = Math.min(cssW, cssH) - 2 * pad;
+    const toX = v => pad + (v / 100) * size;
+    const toY = v => pad + size - (v / 100) * size; // reserve increases upward
+
+    const zoneColors = ['rgba(229,104,107,0.14)', 'rgba(224,103,42,0.14)', 'rgba(79,217,196,0.14)', 'rgba(179,153,240,0.14)'];
+    c.fillStyle = zoneColors[0]; c.fillRect(toX(50), toY(50), size / 2, size / 2);          // high activation, low reserve
+    c.fillStyle = zoneColors[1]; c.fillRect(toX(50), pad, size / 2, size / 2);               // high activation, high reserve
+    c.fillStyle = zoneColors[2]; c.fillRect(pad, pad, size / 2, size / 2);                   // low activation, high reserve
+    c.fillStyle = zoneColors[3]; c.fillRect(pad, toY(50), size / 2, size / 2);               // low activation, low reserve
+
+    c.strokeStyle = '#22352E'; c.lineWidth = 1;
+    c.strokeRect(pad, pad, size, size);
+    c.beginPath(); c.moveTo(toX(50), pad); c.lineTo(toX(50), pad + size); c.stroke();
+    c.beginPath(); c.moveTo(pad, toY(50)); c.lineTo(pad + size, toY(50)); c.stroke();
+
+    c.fillStyle = '#7C948C'; c.font = '9px monospace';
+    c.textAlign = 'left'; c.fillText('Low reserve', pad + 2, pad + size - 4);
+    c.textAlign = 'right'; c.fillText('High reserve', pad + size - 2, pad + 12);
+    c.textAlign = 'left'; c.fillText('Calm/mild', pad + 2, pad + 12);
+    c.textAlign = 'right'; c.fillText('Depleted', pad + size - 2, pad + size - 4);
+
+    const px = toX(sympatheticScore), py = toY(reserveScore);
+    c.fillStyle = '#F8FAFC';
+    c.beginPath(); c.arc(px, py, 5, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--trace').trim();
+    c.lineWidth = 2; c.beginPath(); c.arc(px, py, 8, 0, Math.PI * 2); c.stroke();
+}
+
+function renderBalanceQuadrantSection(result) {
+    const box = document.getElementById('balanceQuadrantBox');
+    if (!result) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    const reserveScore = computeReserveScore(result);
+    drawBalanceQuadrant(document.getElementById('balanceQuadrantCanvas'), result.sympatheticScore, reserveScore);
 }
 
 document.getElementById('printReportBtn')?.addEventListener('click', () => window.print());
@@ -1554,6 +1683,7 @@ function summarizePlrChecklist() {
         plrNumbers.style.display = 'none';
         pupilStatusText.textContent = 'Not enough signal captured — retry with your face well-lit and centered in the ring.';
         finalPupilResultGlobal = null;
+        renderReportPlrSummary();
         return;
     }
 
@@ -1632,6 +1762,7 @@ function summarizePlrChecklist() {
 
     pupilStatusText.textContent = 'PLR test complete.';
     finalPupilResultGlobal = { baselineMmAvg, minMmAvg, avgConstriction, constrictionA, constrictionB, latencyMs, recoveryMs, visibilityRate };
+    renderReportPlrSummary();
 }
 
 // Short centered moving average to reduce single-frame measurement noise
@@ -1949,6 +2080,7 @@ function finishEomTest() {
             <b>not a nystagmus diagnosis</b> — but if this appears consistently across repeat tests, or if you have
             any visual symptoms, it's worth mentioning to a clinician.</div>`;
     }
+    renderReportEomSummary();
 }
 </script>
 </body>
