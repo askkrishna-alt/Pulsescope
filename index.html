@@ -415,8 +415,18 @@
       <div class="metric-value" id="metric-duration">0:00</div>
     </div>
   </div>
+  <div class="metric-row">
+    <div class="metric-card">
+      <div class="metric-label">Candidate Events</div>
+      <div class="metric-value accent" id="metric-event-count">0</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Candidate Rate</div>
+      <div class="metric-value accent" id="metric-candidate-rate">—<span class="unit"> bpm</span></div>
+    </div>
+  </div>
   <div class="hint" id="stillness-hint">
-    Hold still. Beat segmentation and fiducial-point detection (AO/AC timing) come in the next build phase — this stage validates raw signal quality only.
+    "Candidate events" are prominent discrete spikes found by time-domain peak detection — this deliberately does not yet distinguish a real cardiac transient from a tap, cough, or body shift. Treat the rate as a diagnostic, not a heart rate, until we've validated it holds steady and physiologically plausible across a longer still recording.
   </div>
 </div>
 
@@ -787,6 +797,27 @@
   const hpAccel = makeBandpass(0.7, 25, ACTUAL_SAMPLE_HZ);
   const hpGyro = makeBandpass(0.7, 25, ACTUAL_SAMPLE_HZ);
 
+  // Tighter chain specifically for beat detection. Real-device testing
+  // (tap-test vs natural recording, Aug 2) showed a persistent broadband
+  // noise hump concentrated ~5-7 Hz that the display filter's single-pole
+  // 25 Hz lowpass barely attenuates. Cascading two single-pole lowpasses
+  // at the same cutoff gives an effective 2-pole (12 dB/oct) rolloff,
+  // enough to meaningfully suppress that hump ahead of peak detection
+  // without touching the sharp AO/AC transient shape (which needs several
+  // Hz of headroom above the ~1 Hz fundamental to survive as a "spike"
+  // rather than getting smoothed into a sine).
+  function makeSteepLowPass(cutoffHz, sampleHz) {
+    const lp1 = makeLowPass(cutoffHz, sampleHz);
+    const lp2 = makeLowPass(cutoffHz, sampleHz);
+    return function (sample) { return lp2(lp1(sample)); };
+  }
+  function makeBeatDetectFilter(sampleHz) {
+    const hp = makeHighPass(0.6, sampleHz);
+    const lp = makeSteepLowPass(8, sampleHz);
+    return function (sample) { return lp(hp(sample)); };
+  }
+  const beatFilterAccel = makeBeatDetectFilter(ACTUAL_SAMPLE_HZ);
+
   // ---------- FFT (radix-2 Cooley-Tukey, for spectrum diagnostic only) ----------
   // Used here purely as a real-time diagnostic (are we looking at a cardiac
   // peak or broadband noise?), not yet the validated analysis pipeline —
@@ -919,6 +950,95 @@
     return rms;
   }
 
+  // ---------- Time-domain beat/event detector ----------
+  // Deliberately NOT FFT-based, following directly from the Aug 2 tap-test
+  // finding: a real, known discrete event produced a clean dominant spike
+  // that simple prominence-based peak picking finds correctly, while the
+  // persistent broadband noise hump can dominate a global FFT peak. Uses
+  // median + MAD (robust to outliers/noise bursts) rather than mean+stdev,
+  // matching the "robust stats over naive mean" lesson from the ANS
+  // project's gaze/oscillation/PLR work.
+  //
+  // Status: this detects "candidate mechanical events" — it does NOT yet
+  // distinguish real cardiac AO/AC transients from a firm tap, a cough, or
+  // a body shift. That classification is future work. Labeled honestly in
+  // the UI as candidate events, not confirmed heartbeats.
+  const detectedEvents = []; // {t, amplitude}
+  const REFRACTORY_MS = 280; // ~214 bpm ceiling; prevents double-firing on one wide transient
+  let beatFilterBuffer = []; // recent filtered dominant-axis values with timestamps, for local prominence calc
+
+  function median(arr) {
+    const s = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  }
+  function mad(arr, med) {
+    return median(arr.map(v => Math.abs(v - med)));
+  }
+
+  function runBeatDetection() {
+    if (state.accelBuffer.length < 30) return;
+    const filtered = state.accelBuffer.map(beatFilterAccel);
+    // dominant-variance axis (recompute here since this filter chain differs from the display one)
+    let maxVarAxis = 'x', maxVar = -Infinity;
+    ['x', 'y', 'z'].forEach(axis => {
+      const vals = filtered.map(f => f[axis]);
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
+      if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
+    });
+    const vals = filtered.map(f => Math.abs(f[maxVarAxis])); // rectify: taps/beats can spike either direction
+    const times = state.accelSampleTimes;
+
+    const med = median(vals);
+    const madVal = Math.max(1e-6, mad(vals, med));
+    const threshold = med + 5 * madVal * 1.4826; // 1.4826 scales MAD to be stdev-comparable for Gaussian noise
+
+    const lastEventT = detectedEvents.length ? detectedEvents[detectedEvents.length - 1].t : -Infinity;
+    // scan only the newest tail we haven't scanned (simple approach: last ~15 samples)
+    const scanStart = Math.max(1, vals.length - 15);
+    for (let i = scanStart; i < vals.length - 1; i++) {
+      const t = times[i];
+      if (t - lastEventT < REFRACTORY_MS) continue;
+      if (vals[i] > threshold && vals[i] >= vals[i - 1] && vals[i] >= vals[i + 1]) {
+        detectedEvents.push({ t, amplitude: vals[i] });
+        if (detectedEvents.length > 40) detectedEvents.shift();
+        break; // one event per scan pass is enough at this refresh rate
+      }
+    }
+  }
+
+  function getCandidateRateBpm() {
+    if (detectedEvents.length < 3) return null;
+    const recent = detectedEvents.slice(-6);
+    const intervals = [];
+    for (let i = 1; i < recent.length; i++) intervals.push(recent[i].t - recent[i - 1].t);
+    const medMs = median(intervals);
+    if (medMs <= 0) return null;
+    return 60000 / medMs;
+  }
+
+  function drawEventMarkers() {
+    if (state.accelBuffer.length < 2 || detectedEvents.length === 0) return;
+    const rect = canvasAccel.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    const bufStart = state.accelSampleTimes[0];
+    const bufEnd = state.accelSampleTimes[state.accelSampleTimes.length - 1];
+    const span = bufEnd - bufStart;
+    if (span <= 0) return;
+
+    ctxAccel.strokeStyle = 'rgba(232,176,75,0.9)';
+    ctxAccel.lineWidth = 1.5;
+    detectedEvents.forEach(ev => {
+      if (ev.t < bufStart || ev.t > bufEnd) return;
+      const x = ((ev.t - bufStart) / span) * w;
+      ctxAccel.beginPath();
+      ctxAccel.moveTo(x, 4);
+      ctxAccel.lineTo(x, 14);
+      ctxAccel.stroke();
+    });
+  }
+
   function classifyQuality(rms, kind) {
     // Rough placeholder thresholds — will be recalibrated against real
     // device recordings once we have actual test data. Purpose right now
@@ -938,6 +1058,8 @@
   function renderLoop() {
     const rmsAccel = drawWaveform(ctxAccel, canvasAccel, state.accelBuffer, hpAccel, resolvedAccelColor);
     const rmsGyro = drawWaveform(ctxGyro, canvasGyro, state.gyroBuffer, hpGyro, resolvedGyroColor);
+    runBeatDetection();
+    drawEventMarkers();
 
     frameCount++;
     if (frameCount % 15 === 0) {
@@ -954,6 +1076,10 @@
       el('metric-samplerate').innerHTML = Math.round(state.accelHz) + '<span class="unit"> Hz</span>';
       el('hz-accel').textContent = Math.round(state.accelHz) + ' Hz';
       el('hz-gyro').textContent = Math.round(state.gyroHz) + ' Hz';
+
+      el('metric-event-count').textContent = detectedEvents.length;
+      const candRate = getCandidateRateBpm();
+      el('metric-candidate-rate').innerHTML = (candRate !== null ? Math.round(candRate) : '—') + '<span class="unit"> bpm</span>';
 
       const jitter = computeJitterStats(state.accelSampleTimes);
       const jitterEl = el('jitter-accel');
