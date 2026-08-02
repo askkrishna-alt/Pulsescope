@@ -376,6 +376,20 @@
   </div>
 </div>
 
+<!-- Spectrum diagnostic -->
+<div class="panel hidden" id="spectrum-panel">
+  <div class="panel-title">
+    <span>Frequency Spectrum (accel, dominant axis)</span>
+    <span class="hz-badge" id="spectrum-peak-badge">— Hz</span>
+  </div>
+  <div class="wave-wrap" style="height:110px;">
+    <canvas id="canvas-spectrum"></canvas>
+  </div>
+  <div class="hint">
+    Cardiac mechanical energy should cluster as a peak roughly 0.8–2.0 Hz (48–120 bpm) with harmonics extending higher. A flat, broadband, or peak-free spectrum here means what you're seeing in the waveform above is environmental noise (traffic, fan, hand tremor), not a cardiac signal — useful to know either way.
+  </div>
+</div>
+
 <!-- Live metrics -->
 <div class="panel hidden" id="metrics-panel">
   <div class="panel-title">Live Readout</div>
@@ -459,9 +473,13 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
+  const canvasSpectrum = el('canvas-spectrum');
+  const ctxSpectrum = canvasSpectrum.getContext('2d');
+
   function resizeAllCanvases() {
     resizeCanvas(canvasAccel);
     resizeCanvas(canvasGyro);
+    resizeCanvas(canvasSpectrum);
   }
   window.addEventListener('resize', resizeAllCanvases);
 
@@ -635,6 +653,7 @@
     permissionGate.classList.add('hidden');
     statusPanel.classList.remove('hidden');
     wavePanel.classList.remove('hidden');
+    el('spectrum-panel').classList.remove('hidden');
     metricsPanel.classList.remove('hidden');
     controlPanel.classList.remove('hidden');
     resizeAllCanvases();
@@ -703,8 +722,131 @@
     };
   }
 
-  const hpAccel = makeHighPass(0.5, 100);
-  const hpGyro = makeHighPass(0.5, 100);
+  // Single-pole low-pass, used in cascade with the high-pass above to form
+  // a crude bandpass. Cutoff chosen to pass the cardiac fundamental +
+  // several harmonics (AO/AC are sharp transients, so we don't want to cut
+  // too low) while rejecting higher-frequency mechanical noise sources
+  // (ceiling fan blade-pass frequency is commonly 15-35 Hz depending on
+  // speed/blade count; road-induced vibration through a held phone tends
+  // to be broadband but weighted higher than the cardiac band).
+  // NOTE: these are reasonable physiological/engineering starting points,
+  // not yet validated against this device's actual noise spectrum — that's
+  // exactly what the spectrum panel below is for.
+  function makeLowPass(cutoffHz, sampleHz) {
+    const rc = 1 / (2 * Math.PI * cutoffHz);
+    const dt = 1 / sampleHz;
+    const alpha = dt / (rc + dt);
+    let prev = { x: 0, y: 0, z: 0 };
+    let initialized = false;
+    return function (sample) {
+      if (!initialized) {
+        prev = { x: sample.x, y: sample.y, z: sample.z };
+        initialized = true;
+        return prev;
+      }
+      const out = {
+        x: prev.x + alpha * (sample.x - prev.x),
+        y: prev.y + alpha * (sample.y - prev.y),
+        z: prev.z + alpha * (sample.z - prev.z),
+      };
+      prev = out;
+      return out;
+    };
+  }
+
+  function makeBandpass(hpCutoff, lpCutoff, sampleHz) {
+    const hp = makeHighPass(hpCutoff, sampleHz);
+    const lp = makeLowPass(lpCutoff, sampleHz);
+    return function (sample) {
+      return lp(hp(sample));
+    };
+  }
+
+  const ACTUAL_SAMPLE_HZ = 60; // matches observed device rate; revisit if measured Hz drifts far from this
+  const hpAccel = makeBandpass(0.7, 25, ACTUAL_SAMPLE_HZ);
+  const hpGyro = makeBandpass(0.7, 25, ACTUAL_SAMPLE_HZ);
+
+  // ---------- FFT (radix-2 Cooley-Tukey, for spectrum diagnostic only) ----------
+  // Used here purely as a real-time diagnostic (are we looking at a cardiac
+  // peak or broadband noise?), not yet the validated analysis pipeline —
+  // that gets the full synthetic-signal validation treatment (matching the
+  // ANS project's HRV spectral work) once we're past raw-signal triage.
+  function nextPow2(n) {
+    let p = 1;
+    while (p < n) p *= 2;
+    return p;
+  }
+
+  function fft(re, im) {
+    const n = re.length;
+    if (n <= 1) return;
+    // bit-reversal permutation
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) {
+        [re[i], re[j]] = [re[j], re[i]];
+        [im[i], im[j]] = [im[j], im[i]];
+      }
+    }
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = -2 * Math.PI / len;
+      const wr = Math.cos(ang), wi = Math.sin(ang);
+      for (let i = 0; i < n; i += len) {
+        let curWr = 1, curWi = 0;
+        for (let k = 0; k < len / 2; k++) {
+          const ur = re[i + k], ui = im[i + k];
+          const vr = re[i + k + len / 2] * curWr - im[i + k + len / 2] * curWi;
+          const vi = re[i + k + len / 2] * curWi + im[i + k + len / 2] * curWr;
+          re[i + k] = ur + vr;
+          im[i + k] = ui + vi;
+          re[i + k + len / 2] = ur - vr;
+          im[i + k + len / 2] = ui - vi;
+          const nwr = curWr * wr - curWi * wi;
+          const nwi = curWr * wi + curWi * wr;
+          curWr = nwr; curWi = nwi;
+        }
+      }
+    }
+  }
+
+  function computeSpectrum(buffer, filterFn, sampleHz) {
+    if (buffer.length < 32) return null;
+    const filtered = buffer.map(filterFn);
+    // dominant-variance axis, same choice as the waveform display
+    let maxVarAxis = 'x', maxVar = -Infinity;
+    ['x', 'y', 'z'].forEach(axis => {
+      const vals = filtered.map(f => f[axis]);
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
+      if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
+    });
+    const signal = filtered.map(f => f[maxVarAxis]);
+
+    const N = Math.min(512, nextPow2(signal.length) / 2 * 2); // cap for perf, keep power-of-2 friendly
+    const windowLen = Math.min(N, nextPow2(Math.min(signal.length, 512)));
+    const usable = signal.slice(-windowLen);
+    const paddedLen = nextPow2(usable.length);
+
+    const re = new Array(paddedLen).fill(0);
+    const im = new Array(paddedLen).fill(0);
+    for (let i = 0; i < usable.length; i++) {
+      // Hann window to reduce spectral leakage
+      const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (usable.length - 1));
+      re[i] = usable[i] * w;
+    }
+
+    fft(re, im);
+
+    const half = paddedLen / 2;
+    const mags = new Array(half);
+    for (let i = 0; i < half; i++) {
+      mags[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]);
+    }
+    const freqStep = sampleHz / paddedLen;
+    return { mags, freqStep };
+  }
 
   // ---------- Rendering ----------
   function drawWaveform(ctx, canvas, buffer, filterFn, colorMain, quality) {
@@ -777,6 +919,9 @@
     const rmsGyro = drawWaveform(ctxGyro, canvasGyro, state.gyroBuffer, hpGyro, resolvedGyroColor);
 
     frameCount++;
+    if (frameCount % 15 === 0) {
+      drawSpectrum();
+    }
     if (frameCount % 6 === 0) {
       const qa = classifyQuality(rmsAccel, 'accel');
       const qg = classifyQuality(rmsGyro, 'gyro');
@@ -798,6 +943,52 @@
     }
 
     requestAnimationFrame(renderLoop);
+  }
+
+  function drawSpectrum() {
+    const spec = computeSpectrum(state.accelBuffer, hpAccel, ACTUAL_SAMPLE_HZ);
+    const rect = canvasSpectrum.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    ctxSpectrum.clearRect(0, 0, w, h);
+    if (!spec) return;
+
+    const MAX_HZ_DISPLAY = 30;
+    const maxBin = Math.min(spec.mags.length - 1, Math.floor(MAX_HZ_DISPLAY / spec.freqStep));
+    const displayMags = spec.mags.slice(1, maxBin + 1); // drop DC bin (index 0)
+    const maxMag = Math.max(0.0001, ...displayMags);
+
+    // bar chart
+    ctxSpectrum.fillStyle = resolvedAccelColor;
+    const barW = w / displayMags.length;
+    let peakIdx = 0, peakMag = -Infinity;
+    displayMags.forEach((m, i) => {
+      const bh = (m / maxMag) * (h - 14);
+      ctxSpectrum.globalAlpha = 0.85;
+      ctxSpectrum.fillRect(i * barW, h - bh, Math.max(1, barW - 1), bh);
+      if (m > peakMag) { peakMag = m; peakIdx = i; }
+    });
+    ctxSpectrum.globalAlpha = 1;
+
+    // mark cardiac band (0.8-2.0 Hz) for visual reference
+    const bandStartPx = (0.8 / spec.freqStep) / displayMags.length * w;
+    const bandEndPx = (2.0 / spec.freqStep) / displayMags.length * w;
+    ctxSpectrum.strokeStyle = 'rgba(232,176,75,0.5)';
+    ctxSpectrum.lineWidth = 1;
+    ctxSpectrum.setLineDash([3, 3]);
+    ctxSpectrum.beginPath();
+    ctxSpectrum.moveTo(bandStartPx, 0); ctxSpectrum.lineTo(bandStartPx, h);
+    ctxSpectrum.moveTo(bandEndPx, 0); ctxSpectrum.lineTo(bandEndPx, h);
+    ctxSpectrum.stroke();
+    ctxSpectrum.setLineDash([]);
+
+    const peakHz = (peakIdx + 1) * spec.freqStep;
+    const badge = el('spectrum-peak-badge');
+    if (peakMag > 0) {
+      const bpm = Math.round(peakHz * 60);
+      badge.textContent = peakHz.toFixed(2) + ' Hz (' + bpm + ' bpm-equiv)';
+    } else {
+      badge.textContent = '— Hz';
+    }
   }
 
   function setQualityPill(id, q) {
