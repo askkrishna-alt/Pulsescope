@@ -1,1188 +1,262 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SeismoScope — Cardiac Mechanics Tracker</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #0B1210;
-    --panel: #11201B;
-    --panel-2: #16241E;
-    --trace: #4FD9C4;
-    --amber: #E8B04B;
-    --violet: #A48CF0;
-    --coral: #E8735E;
-    --burnt: #C4623A;
-    --text: #E7F1EC;
-    --text-dim: #8FA79C;
-    --text-faint: #5C7268;
-    --border: rgba(143, 167, 156, 0.16);
-    --gyro-color: var(--violet);
-    --accel-color: var(--trace);
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'IBM Plex Sans', sans-serif;
-    min-height: 100vh;
-    padding: 16px;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  h1, h2, h3, .mono, .metric-value, .metric-label, .hz-badge {
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
-  header {
-    margin-bottom: 20px;
-  }
-
-  header h1 {
-    font-size: 1.15rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    color: var(--text);
-  }
-
-  header .subtitle {
-    font-size: 0.8rem;
-    color: var(--text-dim);
-    margin-top: 4px;
-  }
-
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 16px;
-    margin-bottom: 14px;
-  }
-
-  .panel-title {
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-dim);
-    margin-bottom: 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .hint {
-    font-size: 0.78rem;
-    color: var(--text-dim);
-    border-left: 2px solid var(--border);
-    padding-left: 10px;
-    line-height: 1.5;
-    margin-top: 10px;
-  }
-
-  /* Placement selector */
-  .placement-toggle {
-    display: flex;
-    gap: 8px;
-  }
-
-  .placement-btn {
-    flex: 1;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 8px;
-    color: var(--text-dim);
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.82rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .placement-btn.active {
-    border-color: var(--trace);
-    color: var(--trace);
-    background: rgba(79, 217, 196, 0.08);
-  }
-
-  /* Metric cards */
-  .metric-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 4px;
-  }
-
-  .metric-card {
-    background: var(--panel-2);
-    border-radius: 10px;
-    padding: 12px 14px;
-  }
-
-  .metric-label {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-faint);
-  }
-
-  .metric-value {
-    font-size: 1.6rem;
-    font-weight: 600;
-    color: var(--text);
-    margin-top: 4px;
-  }
-
-  .metric-value .unit {
-    font-size: 0.85rem;
-    color: var(--text-dim);
-    font-weight: 400;
-  }
-
-  .metric-value.accent { color: var(--accel-color); }
-  .metric-value.gyro-accent { color: var(--gyro-color); }
-
-  /* Confidence pill */
-  .confidence {
-    display: inline-block;
-    font-size: 0.68rem;
-    padding: 3px 9px;
-    border-radius: 999px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-  .confidence.high { background: rgba(79, 217, 196, 0.15); color: var(--trace); }
-  .confidence.medium { background: rgba(232, 176, 75, 0.15); color: var(--amber); }
-  .confidence.low { background: rgba(232, 115, 94, 0.15); color: var(--coral); }
-  .confidence.none { background: rgba(143, 167, 156, 0.1); color: var(--text-dim); }
-
-  /* Canvas waveform */
-  .wave-wrap {
-    position: relative;
-    width: 100%;
-    height: 140px;
-    background: #0D1714;
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 8px;
-  }
-
-  .wave-wrap canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-
-  .wave-legend {
-    display: flex;
-    gap: 16px;
-    font-size: 0.72rem;
-    color: var(--text-dim);
-    margin-top: 6px;
-    padding-left: 2px;
-  }
-
-  .wave-legend span { display: flex; align-items: center; gap: 6px; }
-
-  .legend-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    display: inline-block;
-  }
-
-  /* Buttons */
-  .btn {
-    width: 100%;
-    padding: 14px;
-    border-radius: 12px;
-    border: none;
-    font-family: 'IBM Plex Sans', sans-serif;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .btn-primary {
-    background: var(--trace);
-    color: #0B1210;
-  }
-
-  .btn-primary:active { transform: scale(0.98); }
-
-  .btn-primary.recording {
-    background: var(--coral);
-    color: #1a0f0d;
-  }
-
-  .btn-secondary {
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-
-  /* Sensor status grid */
-  .sensor-status {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .sensor-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.82rem;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .sensor-row:last-child { border-bottom: none; }
-
-  .sensor-name { color: var(--text); }
-  .sensor-detail { color: var(--text-faint); font-size: 0.72rem; margin-top: 2px; }
-
-  .status-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    display: inline-block; margin-right: 6px;
-  }
-  .status-dot.ok { background: var(--trace); }
-  .status-dot.warn { background: var(--amber); }
-  .status-dot.err { background: var(--coral); }
-  .status-dot.idle { background: var(--text-faint); }
-
-  .hz-badge {
-    font-size: 0.68rem;
-    color: var(--text-dim);
-    background: var(--panel-2);
-    padding: 2px 8px;
-    border-radius: 6px;
-  }
-
-  #permission-gate {
-    text-align: center;
-    padding: 24px 16px;
-  }
-
-  #permission-gate p {
-    font-size: 0.85rem;
-    color: var(--text-dim);
-    margin-bottom: 16px;
-    line-height: 1.5;
-  }
-
-  .interp-box {
-    border-left: 3px solid var(--trace);
-    background: rgba(79, 217, 196, 0.05);
-    padding: 10px 12px;
-    border-radius: 0 8px 8px 0;
-    font-size: 0.82rem;
-    line-height: 1.5;
-    color: var(--text);
-  }
-
-  .hidden { display: none !important; }
-
-  footer {
-    text-align: center;
-    font-size: 0.68rem;
-    color: var(--text-faint);
-    padding: 20px 0 8px;
-    line-height: 1.6;
-  }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile SCG Pro Monitor</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-color: #1e1e1e;
+            --accent-color: #00e676;
+            --text-color: #ffffff;
+            --alert-color: #ff1744;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--card-color);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+            box-sizing: border-box;
+        }
+        h1 { font-size: 1.4rem; text-align: center; margin-top: 0; color: var(--accent-color); }
+        .instructions { font-size: 0.85rem; color: #aaaaaa; margin-bottom: 15px; line-height: 1.4; }
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .metric-box {
+            background: #2a2a2a;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .metric-label { font-size: 0.75rem; color: #aaaaaa; text-transform: uppercase; }
+        .metric-value { font-size: 1.6rem; font-weight: bold; color: var(--accent-color); margin-top: 5px; }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 10px;
+        }
+        .btn-start { background-color: var(--accent-color); color: #000; }
+        .btn-stop { background-color: var(--alert-color); color: #fff; display: none; }
+        .btn-export { background-color: #2979ff; color: #fff; display: none; }
+        .status { text-align: center; font-weight: bold; margin: 10px 0; min-height: 24px; font-size: 0.95rem; }
+        canvas {
+            width: 100%;
+            height: 220px;
+            background-color: #050505;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+    </style>
 </head>
 <body>
 
-<header>
-  <h1>SeismoScope</h1>
-  <div class="subtitle">Cardiac mechanics from your phone's motion sensors — not a medical device</div>
-</header>
+<div class="container">
+    <h1>Mobile SCG Pro Monitor</h1>
+    <div class="instructions">
+        <strong>Protocol:</strong> Place the bare phone screen-up on your chest. Tap the button, breathe out completely, and hold still during the 3s countdown!
+    </div>
 
-<!-- Placement selector -->
-<div class="panel">
-  <div class="panel-title">Phone Placement</div>
-  <div class="placement-toggle">
-    <div class="placement-btn active" data-placement="lying" id="btn-lying">
-      Lying flat<br><span style="font-size:0.7rem; color:var(--text-faint)">phone on chest</span>
+    <div class="dashboard">
+        <div class="metric-box">
+            <div class="metric-label">Timer Status</div>
+            <div id="timerVal" class="metric-value">15s</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Estimated HR</div>
+            <div id="bpmVal" class="metric-value">-- BPM</div>
+        </div>
     </div>
-    <div class="placement-btn" data-placement="held" id="btn-held">
-      Seated / standing<br><span style="font-size:0.7rem; color:var(--text-faint)">held to chest</span>
-    </div>
-  </div>
-  <div class="hint" id="placement-hint">
-    Lie down, place the phone screen-up directly over the lower sternum (breastbone), and hold still. This orientation gives the most stable signal and matches most published SCG methodology.
-  </div>
+
+    <button id="startBtn" class="btn btn-start">Initialize Session</button>
+    <button id="stopBtn" class="btn btn-stop">Emergency Cancel</button>
+    <button id="exportBtn" class="btn btn-export">Export Session CSV</button>
+
+    <div id="statusUpdate" class="status">Ready</div>
+    <canvas id="scgChart"></canvas>
 </div>
-
-<!-- Permission gate -->
-<div class="panel" id="permission-gate">
-  <p>This needs access to your phone's accelerometer and gyroscope to detect cardiac vibrations transmitted through your chest wall.</p>
-  <button class="btn btn-primary" id="btn-enable-sensors">Enable Motion Sensors</button>
-</div>
-
-<!-- Sensor status -->
-<div class="panel hidden" id="status-panel">
-  <div class="panel-title">Sensor Status</div>
-  <div class="sensor-status">
-    <div class="sensor-row">
-      <div>
-        <span class="status-dot idle" id="dot-accel"></span>
-        <span class="sensor-name">Accelerometer</span>
-        <div class="sensor-detail" id="detail-accel">not started</div>
-        <div class="sensor-detail" id="jitter-accel"></div>
-      </div>
-      <span class="hz-badge" id="hz-accel">— Hz</span>
-    </div>
-    <div class="sensor-row">
-      <div>
-        <span class="status-dot idle" id="dot-gyro"></span>
-        <span class="sensor-name">Gyroscope</span>
-        <div class="sensor-detail" id="detail-gyro">not started</div>
-      </div>
-      <span class="hz-badge" id="hz-gyro">— Hz</span>
-    </div>
-  </div>
-</div>
-
-<!-- Live waveforms -->
-<div class="panel hidden" id="wave-panel">
-  <div class="panel-title">
-    <span>Linear Acceleration (SCG)</span>
-    <span class="confidence none" id="signal-quality-accel">no signal</span>
-  </div>
-  <div class="wave-wrap">
-    <canvas id="canvas-accel"></canvas>
-  </div>
-  <div class="wave-legend">
-    <span><span class="legend-dot" style="background:var(--accel-color)"></span>chest-normal axis</span>
-    <span><span class="legend-dot" style="background:var(--text-faint)"></span>other axes</span>
-  </div>
-
-  <div class="panel-title" style="margin-top:18px;">
-    <span>Angular Velocity (GCG)</span>
-    <span class="confidence none" id="signal-quality-gyro">no signal</span>
-  </div>
-  <div class="wave-wrap">
-    <canvas id="canvas-gyro"></canvas>
-  </div>
-  <div class="wave-legend">
-    <span><span class="legend-dot" style="background:var(--gyro-color)"></span>dominant rotation axis</span>
-    <span><span class="legend-dot" style="background:var(--text-faint)"></span>other axes</span>
-  </div>
-</div>
-
-<!-- Spectrum diagnostic -->
-<div class="panel hidden" id="spectrum-panel">
-  <div class="panel-title">
-    <span>Frequency Spectrum (accel, dominant axis)</span>
-    <span class="hz-badge" id="spectrum-peak-badge">— Hz</span>
-  </div>
-  <div class="wave-wrap" style="height:110px;">
-    <canvas id="canvas-spectrum"></canvas>
-  </div>
-  <div class="hint">
-    Cardiac mechanical energy should cluster as a peak roughly 0.8–2.0 Hz (48–120 bpm) with harmonics extending higher. A flat, broadband, or peak-free spectrum here means what you're seeing in the waveform above is environmental noise (traffic, fan, hand tremor), not a cardiac signal — useful to know either way.
-  </div>
-  <div class="hint" id="spectrum-diag" style="border-left-color: var(--amber); margin-top: 6px;"></div>
-</div>
-
-<!-- Live metrics -->
-<div class="panel hidden" id="metrics-panel">
-  <div class="panel-title">Live Readout</div>
-  <div class="metric-row">
-    <div class="metric-card">
-      <div class="metric-label">Signal RMS (accel)</div>
-      <div class="metric-value accent" id="metric-rms-accel">—<span class="unit"> m/s²</span></div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Signal RMS (gyro)</div>
-      <div class="metric-value gyro-accent" id="metric-rms-gyro">—<span class="unit"> °/s</span></div>
-    </div>
-  </div>
-  <div class="metric-row">
-    <div class="metric-card">
-      <div class="metric-label">Sample Rate</div>
-      <div class="metric-value" id="metric-samplerate">—<span class="unit"> Hz</span></div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Session Time</div>
-      <div class="metric-value" id="metric-duration">0:00</div>
-    </div>
-  </div>
-  <div class="metric-row">
-    <div class="metric-card">
-      <div class="metric-label">Candidate Events</div>
-      <div class="metric-value accent" id="metric-event-count">0</div>
-    </div>
-    <div class="metric-card">
-      <div class="metric-label">Candidate Rate</div>
-      <div class="metric-value accent" id="metric-candidate-rate">—<span class="unit"> bpm</span></div>
-    </div>
-  </div>
-  <div class="hint" id="stillness-hint">
-    "Candidate events" are prominent discrete spikes found by time-domain peak detection — this deliberately does not yet distinguish a real cardiac transient from a tap, cough, or body shift. Treat the rate as a diagnostic, not a heart rate, until we've validated it holds steady and physiologically plausible across a longer still recording.
-  </div>
-</div>
-
-<!-- Record control -->
-<div class="panel hidden" id="control-panel">
-  <button class="btn btn-primary" id="btn-record">Start Recording</button>
-</div>
-
-<footer>
-  Experimental wellness tool. Mechanical cardiac vibration signal only —<br>
-  does not measure or reconstruct electrical cardiac activity (ECG).
-</footer>
 
 <script>
-(function () {
-  'use strict';
-
-  // ---------- State ----------
-  const state = {
-    placement: 'lying',
-    accelSupported: false,
-    gyroSupported: false,
-    accelActive: false,
-    gyroActive: false,
-    recording: false,
-    recordStart: null,
-    accelBuffer: [], // {t, x, y, z}
-    gyroBuffer: [],  // {t, x, y, z}
-    accelSampleTimes: [],
-    gyroSampleTimes: [],
-    accelHz: 0,
-    gyroHz: 0,
-  };
-
-  const BUFFER_SECONDS = 8; // rolling display window
-
-  // ---------- DOM refs ----------
-  const el = (id) => document.getElementById(id);
-  const permissionGate = el('permission-gate');
-  const statusPanel = el('status-panel');
-  const wavePanel = el('wave-panel');
-  const metricsPanel = el('metrics-panel');
-  const controlPanel = el('control-panel');
-
-  const canvasAccel = el('canvas-accel');
-  const canvasGyro = el('canvas-gyro');
-  const ctxAccel = canvasAccel.getContext('2d');
-  const ctxGyro = canvasGyro.getContext('2d');
-
-  function resizeCanvas(canvas) {
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const statusUpdate = document.getElementById('statusUpdate');
+    const timerVal = document.getElementById('timerVal');
+    const bpmVal = document.getElementById('bpmVal');
+    const canvas = document.getElementById('scgChart');
     const ctx = canvas.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
 
-  const canvasSpectrum = el('canvas-spectrum');
-  const ctxSpectrum = canvasSpectrum.getContext('2d');
+    let sensor = null;
+    let animationFrameId = null;
+    let mainInterval = null;
+    
+    // Config parameters
+    const sampleRate = 100; 
+    const maxDurationSeconds = 15;
+    const bufferLength = 400; 
+    
+    // Buffers and tracking matrices
+    let dataBuffer = new Array(bufferLength).fill(0);
+    let markerBuffer = new Array(bufferLength).fill(false); // Flags to show detected peaks visually
+    let sessionLog = []; 
+    let startTime = 0;
+    let recordTimeLeft = maxDurationSeconds;
 
-  function resizeAllCanvases() {
-    resizeCanvas(canvasAccel);
-    resizeCanvas(canvasGyro);
-    resizeCanvas(canvasSpectrum);
-  }
-  window.addEventListener('resize', resizeAllCanvases);
+    // --- Peak Detection Logic Helper Variables ---
+    let sampleCounter = 0;
+    let lastPeakIndex = 0;
+    const minPeakDistanceSamples = sampleRate * 0.55; // Limits peaks to ~110 BPM max boundary
+    let dynamicThreshold = 0.05; // Initial seed threshold
 
-  // ---------- Placement toggle ----------
-  const placementHints = {
-    lying: "Lie down, place the phone screen-up directly over the lower sternum (breastbone), and hold still. This orientation gives the most stable signal and matches most published SCG methodology.",
-    held: "Hold the phone flat against your chest over the sternum, screen facing your body, elbow supported if possible to minimize hand tremor. Expect a noisier signal than lying flat — postural muscle tone and hand micro-motion add noise the lying position avoids."
-  };
+    // --- IIR Butterworth Bandpass Filter (1 Hz - 30 Hz @ 100 Hz Sampling) ---
+    const b = [0.1215, 0, -0.2431, 0, 0.1215];
+    const a = [1.0000, -2.1215, 1.9542, -0.8715, 0.1856];
+    let x =;
+    let y =;
 
-  el('btn-lying').addEventListener('click', () => setPlacement('lying'));
-  el('btn-held').addEventListener('click', () => setPlacement('held'));
+    function processSignal(rawValue) {
+        x.unshift(rawValue);
+        x.pop();
 
-  function setPlacement(p) {
-    state.placement = p;
-    el('btn-lying').classList.toggle('active', p === 'lying');
-    el('btn-held').classList.toggle('active', p === 'held');
-    el('placement-hint').textContent = placementHints[p];
-  }
+        let filteredValue = (b[0] * x[0]) + (b[1] * x[1]) + (b[2] * x[2]) + (b[3] * x[3]) + (b[4] * x[4])
+                            - (a[1] * y[0]) - (a[2] * y[1]) - (a[3] * y[2]) - (a[4] * y[3]);
 
-  // ---------- Sensor acquisition ----------
-  // Strategy: try the Generic Sensor API (Accelerometer/Gyroscope) first —
-  // higher precision, explicit sample-rate control, separates true linear
-  // acceleration from gravity better on supporting browsers (Android Chrome).
-  // Fall back to DeviceMotionEvent/DeviceOrientationEvent for iOS Safari and
-  // browsers without Generic Sensor API support.
+        y.unshift(filteredValue);
+        y.pop();
 
-  let genericAccelSensor = null;
-  let genericGyroSensor = null;
-  let usingGenericAccel = false;
-  let usingGenericGyro = false;
-
-  function nowMs() { return performance.now(); }
-
-  function pushSample(buffer, timesArr, sample) {
-    buffer.push(sample);
-    timesArr.push(sample.t);
-    const cutoff = sample.t - BUFFER_SECONDS * 1000;
-    while (buffer.length && buffer[0].t < cutoff) {
-      buffer.shift();
-    }
-    while (timesArr.length && timesArr[0] < cutoff) {
-      timesArr.shift();
-    }
-  }
-
-  function updateHzEstimate(timesArr) {
-    if (timesArr.length < 2) return 0;
-    const span = (timesArr[timesArr.length - 1] - timesArr[0]) / 1000;
-    if (span <= 0) return 0;
-    return (timesArr.length - 1) / span;
-  }
-
-  // Detects burst/batched sensor delivery: if samples arrive in clusters
-  // (many samples with ~0ms gaps, followed by a larger gap, repeating) the
-  // std-dev of inter-sample intervals will be large relative to the mean,
-  // and dividing 1000/meanGapOfBurstBoundaries reveals the burst frequency.
-  // This is the diagnostic for hypothesis #2 (batched delivery) vs #1
-  // (real harmonic content of a slower true signal).
-  function computeJitterStats(timesArr) {
-    if (timesArr.length < 10) return null;
-    const deltas = [];
-    for (let i = 1; i < timesArr.length; i++) deltas.push(timesArr[i] - timesArr[i - 1]);
-    const mean = deltas.reduce((a, b) => a + b, 0) / deltas.length;
-    const variance = deltas.reduce((a, b) => a + (b - mean) * (b - mean), 0) / deltas.length;
-    const stdev = Math.sqrt(variance);
-    // count "large gap" boundaries (>2x mean) as candidate burst boundaries
-    const largeGaps = deltas.filter(d => d > mean * 2).length;
-    const burstHz = largeGaps > 0 ? largeGaps / ((timesArr[timesArr.length - 1] - timesArr[0]) / 1000) : 0;
-    return { meanMs: mean, stdevMs: stdev, burstHz };
-  }
-
-  function onAccelSample(x, y, z) {
-    const t = nowMs();
-    pushSample(state.accelBuffer, state.accelSampleTimes, { t, x, y, z });
-    state.accelHz = updateHzEstimate(state.accelSampleTimes);
-    if (!state.accelActive) {
-      state.accelActive = true;
-      setDotStatus('dot-accel', 'ok');
-      el('detail-accel').textContent = usingGenericAccel ? 'Generic Sensor API' : 'DeviceMotion (fallback)';
-    }
-  }
-
-  function onGyroSample(x, y, z) {
-    const t = nowMs();
-    pushSample(state.gyroBuffer, state.gyroSampleTimes, { t, x, y, z });
-    state.gyroHz = updateHzEstimate(state.gyroSampleTimes);
-    if (!state.gyroActive) {
-      state.gyroActive = true;
-      setDotStatus('dot-gyro', 'ok');
-      el('detail-gyro').textContent = usingGenericGyro ? 'Generic Sensor API' : 'DeviceMotion rotationRate (fallback)';
-    }
-  }
-
-  function setDotStatus(id, cls) {
-    const dot = el(id);
-    dot.className = 'status-dot ' + cls;
-  }
-
-  async function startGenericSensors() {
-    let accelOk = false, gyroOk = false;
-
-    if ('Accelerometer' in window) {
-      try {
-        // linear acceleration excludes gravity where supported; fall back to Accelerometer otherwise
-        const SensorClass = ('LinearAccelerationSensor' in window) ? window.LinearAccelerationSensor : window.Accelerometer;
-        genericAccelSensor = new SensorClass({ frequency: 100 });
-        genericAccelSensor.addEventListener('reading', () => {
-          onAccelSample(genericAccelSensor.x, genericAccelSensor.y, genericAccelSensor.z);
-        });
-        genericAccelSensor.addEventListener('error', (e) => {
-          console.warn('Accelerometer sensor error', e.error);
-          el('detail-accel').textContent = 'error: ' + (e.error ? e.error.message : 'unknown');
-          setDotStatus('dot-accel', 'err');
-        });
-        genericAccelSensor.start();
-        usingGenericAccel = true;
-        accelOk = true;
-      } catch (err) {
-        console.warn('Generic Accelerometer unavailable, will fall back', err);
-      }
+        return filteredValue;
     }
 
-    if ('Gyroscope' in window) {
-      try {
-        genericGyroSensor = new window.Gyroscope({ frequency: 100 });
-        genericGyroSensor.addEventListener('reading', () => {
-          // rad/s -> deg/s for readability
-          const RAD2DEG = 180 / Math.PI;
-          onGyroSample(genericGyroSensor.x * RAD2DEG, genericGyroSensor.y * RAD2DEG, genericGyroSensor.z * RAD2DEG);
-        });
-        genericGyroSensor.addEventListener('error', (e) => {
-          console.warn('Gyroscope sensor error', e.error);
-          el('detail-gyro').textContent = 'error: ' + (e.error ? e.error.message : 'unknown');
-          setDotStatus('dot-gyro', 'err');
-        });
-        genericGyroSensor.start();
-        usingGenericGyro = true;
-        gyroOk = true;
-      } catch (err) {
-        console.warn('Generic Gyroscope unavailable, will fall back', err);
-      }
+    // --- Canvas Rendering Window Loop (With Peak Markers) ---
+    function resizeCanvas() {
+        canvas.width = canvas.clientWidth * window.devicePixelRatio;
+        canvas.height = canvas.clientHeight * window.devicePixelRatio;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
 
-    return { accelOk, gyroOk };
-  }
+    function drawGraph() {
+        ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+        
+        // Zero-line baseline reference
+        ctx.strokeStyle = '#222222';
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.clientHeight / 2);
+        ctx.lineTo(canvas.clientWidth, canvas.clientHeight / 2);
+        ctx.stroke();
 
-  function startDeviceMotionFallback(needAccel, needGyro) {
-    if (!needAccel && !needGyro) return;
+        const step = canvas.clientWidth / bufferLength;
+        const midY = canvas.clientHeight / 2;
+        const scale = 200; // Amplifies microvolt accelerometer oscillations
 
-    window.addEventListener('devicemotion', (e) => {
-      if (needAccel) {
-        // Prefer gravity-excluded acceleration when available; fall back to includingGravity
-        const a = e.acceleration && (e.acceleration.x !== null) ? e.acceleration : e.accelerationIncludingGravity;
-        if (a && a.x !== null && a.x !== undefined) {
-          onAccelSample(a.x, a.y, a.z);
+        // Render the primary SCG Green Waveform
+        ctx.strokeStyle = '#00e676';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < dataBuffer.length; i++) {
+            let xPos = i * step;
+            let yPos = midY - (dataBuffer[i] * scale);
+            if (i === 0) ctx.moveTo(xPos, yPos);
+            else ctx.lineTo(xPos, yPos);
         }
-      }
-      if (needGyro) {
-        const r = e.rotationRate;
-        if (r && r.alpha !== null && r.alpha !== undefined) {
-          onGyroSample(r.beta, r.gamma, r.alpha); // beta/gamma/alpha ~ x/y/z rotation
+        ctx.stroke();
+
+        // Render Red Triangle Markers above detected heartbeat peaks
+        for (let i = 0; i < markerBuffer.length; i++) {
+            if (markerBuffer[i] === true) {
+                let xPos = i * step;
+                let yPos = midY - (dataBuffer[i] * scale) - 15; // Suspend slightly above peak apex
+                
+                ctx.fillStyle = '#ff1744';
+                ctx.beginPath();
+                ctx.moveTo(xPos, yPos);          // Top corner of triangle
+                ctx.lineTo(xPos - 5, yPos + 10); // Bottom left
+                ctx.lineTo(xPos + 5, yPos + 10); // Bottom right
+                ctx.closePath();
+                ctx.fill();
+            }
         }
-      }
-    }, { passive: true });
-  }
 
-  async function requestIOSPermissionIfNeeded() {
-    // iOS 13+ requires an explicit user-gesture permission request for both
-    // DeviceMotionEvent and DeviceOrientationEvent (covers rotationRate too).
-    let granted = true;
-    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-      try {
-        const res = await DeviceMotionEvent.requestPermission();
-        granted = (res === 'granted');
-      } catch (err) {
-        console.warn('DeviceMotionEvent permission request failed', err);
-        granted = false;
-      }
-    }
-    return granted;
-  }
-
-  async function enableSensors() {
-    const iosGranted = await requestIOSPermissionIfNeeded();
-    if (!iosGranted) {
-      permissionGate.innerHTML = '<p style="color:var(--coral)">Motion sensor access was denied. This app cannot function without it — please enable Motion & Orientation access for this site in your browser/device settings and reload.</p>';
-      return;
+        animationFrameId = requestAnimationFrame(drawGraph);
     }
 
-    permissionGate.classList.add('hidden');
-    statusPanel.classList.remove('hidden');
-    wavePanel.classList.remove('hidden');
-    el('spectrum-panel').classList.remove('hidden');
-    metricsPanel.classList.remove('hidden');
-    controlPanel.classList.remove('hidden');
-    resizeAllCanvases();
+    // --- On-The-Fly Heart Rate Tracking Engine ---
+    function performRealTimePeakDetection(currentFilteredVal) {
+        sampleCounter++;
+        let isPeakDetected = false;
 
-    const { accelOk, gyroOk } = await startGenericSensors();
-    startDeviceMotionFallback(!accelOk, !gyroOk);
-
-    // If nothing reports data within 2s, flag as unsupported rather than
-    // silently sitting at "not started" forever.
-    setTimeout(() => {
-      if (!state.accelActive) {
-        setDotStatus('dot-accel', 'err');
-        el('detail-accel').textContent = 'no data received — sensor unsupported or blocked';
-      }
-      if (!state.gyroActive) {
-        setDotStatus('dot-gyro', 'err');
-        el('detail-gyro').textContent = 'no data received — sensor unsupported or blocked';
-      }
-    }, 2000);
-
-    requestAnimationFrame(renderLoop);
-  }
-
-  el('btn-enable-sensors').addEventListener('click', enableSensors);
-
-  // ---------- Recording control ----------
-  const btnRecord = el('btn-record');
-  btnRecord.addEventListener('click', () => {
-    state.recording = !state.recording;
-    if (state.recording) {
-      state.recordStart = nowMs();
-      btnRecord.textContent = 'Stop Recording';
-      btnRecord.classList.add('recording');
-    } else {
-      btnRecord.textContent = 'Start Recording';
-      btnRecord.classList.remove('recording');
-    }
-  });
-
-  // ---------- Simple high-pass filter (removes DC / gravity drift) ----------
-  // One-pole high-pass, ~0.4 Hz cutoff at ~100Hz sample rate — enough to
-  // strip gravity offset and slow drift without eating the cardiac band
-  // (cardiac mechanical content of interest is roughly 1-40 Hz).
-  function makeHighPass(cutoffHz, sampleHz) {
-    const rc = 1 / (2 * Math.PI * cutoffHz);
-    const dt = 1 / sampleHz;
-    const alpha = rc / (rc + dt);
-    let prevIn = { x: 0, y: 0, z: 0 };
-    let prevOut = { x: 0, y: 0, z: 0 };
-    let initialized = false;
-    return function (sample) {
-      if (!initialized) {
-        prevIn = { x: sample.x, y: sample.y, z: sample.z };
-        prevOut = { x: 0, y: 0, z: 0 };
-        initialized = true;
-        return { x: 0, y: 0, z: 0 };
-      }
-      const out = {
-        x: alpha * (prevOut.x + sample.x - prevIn.x),
-        y: alpha * (prevOut.y + sample.y - prevIn.y),
-        z: alpha * (prevOut.z + sample.z - prevIn.z),
-      };
-      prevIn = { x: sample.x, y: sample.y, z: sample.z };
-      prevOut = out;
-      return out;
-    };
-  }
-
-  // Single-pole low-pass, used in cascade with the high-pass above to form
-  // a crude bandpass. Cutoff chosen to pass the cardiac fundamental +
-  // several harmonics (AO/AC are sharp transients, so we don't want to cut
-  // too low) while rejecting higher-frequency mechanical noise sources
-  // (ceiling fan blade-pass frequency is commonly 15-35 Hz depending on
-  // speed/blade count; road-induced vibration through a held phone tends
-  // to be broadband but weighted higher than the cardiac band).
-  // NOTE: these are reasonable physiological/engineering starting points,
-  // not yet validated against this device's actual noise spectrum — that's
-  // exactly what the spectrum panel below is for.
-  function makeLowPass(cutoffHz, sampleHz) {
-    const rc = 1 / (2 * Math.PI * cutoffHz);
-    const dt = 1 / sampleHz;
-    const alpha = dt / (rc + dt);
-    let prev = { x: 0, y: 0, z: 0 };
-    let initialized = false;
-    return function (sample) {
-      if (!initialized) {
-        prev = { x: sample.x, y: sample.y, z: sample.z };
-        initialized = true;
-        return prev;
-      }
-      const out = {
-        x: prev.x + alpha * (sample.x - prev.x),
-        y: prev.y + alpha * (sample.y - prev.y),
-        z: prev.z + alpha * (sample.z - prev.z),
-      };
-      prev = out;
-      return out;
-    };
-  }
-
-  function makeBandpass(hpCutoff, lpCutoff, sampleHz) {
-    const hp = makeHighPass(hpCutoff, sampleHz);
-    const lp = makeLowPass(lpCutoff, sampleHz);
-    return function (sample) {
-      return lp(hp(sample));
-    };
-  }
-
-  const ACTUAL_SAMPLE_HZ = 60; // matches observed device rate; revisit if measured Hz drifts far from this
-  const hpAccel = makeBandpass(0.7, 25, ACTUAL_SAMPLE_HZ);
-  const hpGyro = makeBandpass(0.7, 25, ACTUAL_SAMPLE_HZ);
-
-  // Tighter chain specifically for beat detection. Real-device testing
-  // (tap-test vs natural recording, Aug 2) showed a persistent broadband
-  // noise hump concentrated ~5-7 Hz that the display filter's single-pole
-  // 25 Hz lowpass barely attenuates. Cascading two single-pole lowpasses
-  // at the same cutoff gives an effective 2-pole (12 dB/oct) rolloff,
-  // enough to meaningfully suppress that hump ahead of peak detection
-  // without touching the sharp AO/AC transient shape (which needs several
-  // Hz of headroom above the ~1 Hz fundamental to survive as a "spike"
-  // rather than getting smoothed into a sine).
-  function makeSteepLowPass(cutoffHz, sampleHz) {
-    const lp1 = makeLowPass(cutoffHz, sampleHz);
-    const lp2 = makeLowPass(cutoffHz, sampleHz);
-    return function (sample) { return lp2(lp1(sample)); };
-  }
-  function makeBeatDetectFilter(sampleHz) {
-    const hp = makeHighPass(0.6, sampleHz);
-    const lp = makeSteepLowPass(8, sampleHz);
-    return function (sample) { return lp(hp(sample)); };
-  }
-  const beatFilterAccel = makeBeatDetectFilter(ACTUAL_SAMPLE_HZ);
-
-  // ---------- FFT (radix-2 Cooley-Tukey, for spectrum diagnostic only) ----------
-  // Used here purely as a real-time diagnostic (are we looking at a cardiac
-  // peak or broadband noise?), not yet the validated analysis pipeline —
-  // that gets the full synthetic-signal validation treatment (matching the
-  // ANS project's HRV spectral work) once we're past raw-signal triage.
-  function nextPow2(n) {
-    let p = 1;
-    while (p < n) p *= 2;
-    return p;
-  }
-
-  function fft(re, im) {
-    const n = re.length;
-    if (n <= 1) return;
-    // bit-reversal permutation
-    for (let i = 1, j = 0; i < n; i++) {
-      let bit = n >> 1;
-      for (; j & bit; bit >>= 1) j ^= bit;
-      j ^= bit;
-      if (i < j) {
-        [re[i], re[j]] = [re[j], re[i]];
-        [im[i], im[j]] = [im[j], im[i]];
-      }
-    }
-    for (let len = 2; len <= n; len <<= 1) {
-      const ang = -2 * Math.PI / len;
-      const wr = Math.cos(ang), wi = Math.sin(ang);
-      for (let i = 0; i < n; i += len) {
-        let curWr = 1, curWi = 0;
-        for (let k = 0; k < len / 2; k++) {
-          const ur = re[i + k], ui = im[i + k];
-          const vr = re[i + k + len / 2] * curWr - im[i + k + len / 2] * curWi;
-          const vi = re[i + k + len / 2] * curWi + im[i + k + len / 2] * curWr;
-          re[i + k] = ur + vr;
-          im[i + k] = ui + vi;
-          re[i + k + len / 2] = ur - vr;
-          im[i + k + len / 2] = ui - vi;
-          const nwr = curWr * wr - curWi * wi;
-          const nwi = curWr * wi + curWi * wr;
-          curWr = nwr; curWi = nwi;
+        // Maintain a rolling estimate of peak thresholding after the filter settles down
+        if (sampleCounter > sampleRate * 2 && Math.abs(currentFilteredVal) > dynamicThreshold) {
+            // Adaptively scale threshold bounds to prevent environmental drift locking
+            dynamicThreshold = (dynamicThreshold * 0.98) + (Math.abs(currentFilteredVal) * 0.02);
         }
-      }
-    }
-  }
 
-  function computeSpectrum(buffer, filterFn, sampleHz) {
-    if (buffer.length < 32) return null;
-    const filtered = buffer.map(filterFn);
-    // dominant-variance axis, same choice as the waveform display
-    let maxVarAxis = 'x', maxVar = -Infinity;
-    ['x', 'y', 'z'].forEach(axis => {
-      const vals = filtered.map(f => f[axis]);
-      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-      const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
-      if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
-    });
-    const signal = filtered.map(f => f[maxVarAxis]);
+        // Evaluate local mathematical maxima criteria across standard shift windows
+        let historicalLength = dataBuffer.length;
+        let p0 = dataBuffer[historicalLength - 3];
+        let p1 = dataBuffer[historicalLength - 2]; // Evaluation apex index target
+        let p2 = dataBuffer[historicalLength - 1];
 
-    const N = Math.min(512, nextPow2(signal.length) / 2 * 2); // cap for perf, keep power-of-2 friendly
-    const windowLen = Math.min(N, nextPow2(Math.min(signal.length, 512)));
-    const usable = signal.slice(-windowLen);
-    const paddedLen = nextPow2(usable.length);
-
-    const re = new Array(paddedLen).fill(0);
-    const im = new Array(paddedLen).fill(0);
-    for (let i = 0; i < usable.length; i++) {
-      // Hann window to reduce spectral leakage
-      const w = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (usable.length - 1));
-      re[i] = usable[i] * w;
-    }
-
-    fft(re, im);
-
-    const half = paddedLen / 2;
-    const mags = new Array(half);
-    for (let i = 0; i < half; i++) {
-      mags[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]);
-    }
-    const freqStep = sampleHz / paddedLen;
-    return { mags, freqStep };
-  }
-
-  // ---------- Rendering ----------
-  function drawWaveform(ctx, canvas, buffer, filterFn, colorMain, quality) {
-    const rect = canvas.getBoundingClientRect();
-    const w = rect.width, h = rect.height;
-    ctx.clearRect(0, 0, w, h);
-
-    if (buffer.length < 2) return;
-
-    // Apply high-pass to each axis for display
-    const filtered = buffer.map(filterFn);
-
-    // Use signed dominant axis (largest-variance axis) for a more readable trace than pure magnitude
-    let maxVarAxis = 'x', maxVar = -Infinity;
-    ['x', 'y', 'z'].forEach(axis => {
-      const vals = filtered.map(f => f[axis]);
-      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-      const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
-      if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
-    });
-    const dominant = filtered.map(f => f[maxVarAxis]);
-
-    const maxAbs = Math.max(0.01, ...dominant.map(Math.abs));
-    const scale = (h / 2 - 8) / maxAbs;
-    const midY = h / 2;
-
-    // grid midline
-    ctx.strokeStyle = 'rgba(143,167,156,0.12)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, midY);
-    ctx.lineTo(w, midY);
-    ctx.stroke();
-
-    // trace
-    ctx.strokeStyle = colorMain;
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    const n = dominant.length;
-    for (let i = 0; i < n; i++) {
-      const x = (i / (n - 1)) * w;
-      const y = midY - dominant[i] * scale;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    // signal quality heuristic: RMS of dominant axis vs a noise-floor guess
-    const rms = Math.sqrt(dominant.reduce((a, b) => a + b * b, 0) / n);
-    return rms;
-  }
-
-  // ---------- Time-domain beat/event detector ----------
-  // Deliberately NOT FFT-based, following directly from the Aug 2 tap-test
-  // finding: a real, known discrete event produced a clean dominant spike
-  // that simple prominence-based peak picking finds correctly, while the
-  // persistent broadband noise hump can dominate a global FFT peak. Uses
-  // median + MAD (robust to outliers/noise bursts) rather than mean+stdev,
-  // matching the "robust stats over naive mean" lesson from the ANS
-  // project's gaze/oscillation/PLR work.
-  //
-  // Status: this detects "candidate mechanical events" — it does NOT yet
-  // distinguish real cardiac AO/AC transients from a firm tap, a cough, or
-  // a body shift. That classification is future work. Labeled honestly in
-  // the UI as candidate events, not confirmed heartbeats.
-  const detectedEvents = []; // {t, amplitude}
-  const REFRACTORY_MS = 280; // ~214 bpm ceiling; prevents double-firing on one wide transient
-  let beatFilterBuffer = []; // recent filtered dominant-axis values with timestamps, for local prominence calc
-
-  function median(arr) {
-    const s = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(s.length / 2);
-    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-  }
-  function mad(arr, med) {
-    return median(arr.map(v => Math.abs(v - med)));
-  }
-
-  function runBeatDetection() {
-    if (state.accelBuffer.length < 30) return;
-    const filtered = state.accelBuffer.map(beatFilterAccel);
-    // dominant-variance axis (recompute here since this filter chain differs from the display one)
-    let maxVarAxis = 'x', maxVar = -Infinity;
-    ['x', 'y', 'z'].forEach(axis => {
-      const vals = filtered.map(f => f[axis]);
-      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-      const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
-      if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
-    });
-    const vals = filtered.map(f => Math.abs(f[maxVarAxis])); // rectify: taps/beats can spike either direction
-    const times = state.accelSampleTimes;
-
-    const med = median(vals);
-    const madVal = Math.max(1e-6, mad(vals, med));
-    const threshold = med + 5 * madVal * 1.4826; // 1.4826 scales MAD to be stdev-comparable for Gaussian noise
-
-    const lastEventT = detectedEvents.length ? detectedEvents[detectedEvents.length - 1].t : -Infinity;
-    // scan only the newest tail we haven't scanned (simple approach: last ~15 samples)
-    const scanStart = Math.max(1, vals.length - 15);
-    for (let i = scanStart; i < vals.length - 1; i++) {
-      const t = times[i];
-      if (t - lastEventT < REFRACTORY_MS) continue;
-      if (vals[i] > threshold && vals[i] >= vals[i - 1] && vals[i] >= vals[i + 1]) {
-        detectedEvents.push({ t, amplitude: vals[i] });
-        if (detectedEvents.length > 40) detectedEvents.shift();
-        break; // one event per scan pass is enough at this refresh rate
-      }
-    }
-  }
-
-  function getCandidateRateBpm() {
-    if (detectedEvents.length < 3) return null;
-    const recent = detectedEvents.slice(-6);
-    const intervals = [];
-    for (let i = 1; i < recent.length; i++) intervals.push(recent[i].t - recent[i - 1].t);
-    const medMs = median(intervals);
-    if (medMs <= 0) return null;
-    return 60000 / medMs;
-  }
-
-  function drawEventMarkers() {
-    if (state.accelBuffer.length < 2 || detectedEvents.length === 0) return;
-    const rect = canvasAccel.getBoundingClientRect();
-    const w = rect.width, h = rect.height;
-    const bufStart = state.accelSampleTimes[0];
-    const bufEnd = state.accelSampleTimes[state.accelSampleTimes.length - 1];
-    const span = bufEnd - bufStart;
-    if (span <= 0) return;
-
-    ctxAccel.strokeStyle = 'rgba(232,176,75,0.9)';
-    ctxAccel.lineWidth = 1.5;
-    detectedEvents.forEach(ev => {
-      if (ev.t < bufStart || ev.t > bufEnd) return;
-      const x = ((ev.t - bufStart) / span) * w;
-      ctxAccel.beginPath();
-      ctxAccel.moveTo(x, 4);
-      ctxAccel.lineTo(x, 14);
-      ctxAccel.stroke();
-    });
-  }
-
-  function classifyQuality(rms, kind) {
-    // Rough placeholder thresholds — will be recalibrated against real
-    // device recordings once we have actual test data. Purpose right now
-    // is only to flag "essentially flat / no signal" vs "some signal".
-    if (rms === undefined || isNaN(rms)) return { label: 'no signal', cls: 'none' };
-    const floor = kind === 'accel' ? 0.02 : 0.5;
-    const good = kind === 'accel' ? 0.08 : 2.0;
-    if (rms < floor) return { label: 'flat', cls: 'none' };
-    if (rms < good) return { label: 'weak', cls: 'low' };
-    return { label: 'active', cls: 'high' };
-  }
-
-  let frameCount = 0;
-  const resolvedAccelColor = getComputedStyle(document.documentElement).getPropertyValue('--accel-color').trim() || '#4FD9C4';
-  const resolvedGyroColor = getComputedStyle(document.documentElement).getPropertyValue('--gyro-color').trim() || '#A48CF0';
-
-  function renderLoop() {
-    const rmsAccel = drawWaveform(ctxAccel, canvasAccel, state.accelBuffer, hpAccel, resolvedAccelColor);
-    const rmsGyro = drawWaveform(ctxGyro, canvasGyro, state.gyroBuffer, hpGyro, resolvedGyroColor);
-    runBeatDetection();
-    drawEventMarkers();
-
-    frameCount++;
-    if (frameCount % 15 === 0) {
-      drawSpectrum();
-    }
-    if (frameCount % 6 === 0) {
-      const qa = classifyQuality(rmsAccel, 'accel');
-      const qg = classifyQuality(rmsGyro, 'gyro');
-      setQualityPill('signal-quality-accel', qa);
-      setQualityPill('signal-quality-gyro', qg);
-
-      el('metric-rms-accel').innerHTML = (rmsAccel !== undefined ? rmsAccel.toFixed(3) : '—') + '<span class="unit"> m/s²</span>';
-      el('metric-rms-gyro').innerHTML = (rmsGyro !== undefined ? rmsGyro.toFixed(2) : '—') + '<span class="unit"> °/s</span>';
-      el('metric-samplerate').innerHTML = Math.round(state.accelHz) + '<span class="unit"> Hz</span>';
-      el('hz-accel').textContent = Math.round(state.accelHz) + ' Hz';
-      el('hz-gyro').textContent = Math.round(state.gyroHz) + ' Hz';
-
-      el('metric-event-count').textContent = detectedEvents.length;
-      const candRate = getCandidateRateBpm();
-      el('metric-candidate-rate').innerHTML = (candRate !== null ? Math.round(candRate) : '—') + '<span class="unit"> bpm</span>';
-
-      const jitter = computeJitterStats(state.accelSampleTimes);
-      const jitterEl = el('jitter-accel');
-      if (jitter && jitterEl) {
-        if (jitter.burstHz > 0.5) {
-          jitterEl.textContent = 'burst delivery detected: ~' + jitter.burstHz.toFixed(1) + ' Hz (mean gap ' + jitter.meanMs.toFixed(0) + 'ms, σ ' + jitter.stdevMs.toFixed(0) + 'ms)';
-          jitterEl.style.color = 'var(--amber)';
-        } else {
-          jitterEl.textContent = 'even delivery (mean gap ' + jitter.meanMs.toFixed(1) + 'ms, σ ' + jitter.stdevMs.toFixed(1) + 'ms)';
-          jitterEl.style.color = '';
+        if (p1 > p0 && p1 > p2 && p1 > (dynamicThreshold * 0.75)) {
+            if ((sampleCounter - lastPeakIndex) > minPeakDistanceSamples) {
+                isPeakDetected = true;
+                lastPeakIndex = sampleCounter;
+            }
         }
-      }
-
-      if (state.recording && state.recordStart) {
-        const elapsed = (nowMs() - state.recordStart) / 1000;
-        const mm = Math.floor(elapsed / 60);
-        const ss = Math.floor(elapsed % 60).toString().padStart(2, '0');
-        el('metric-duration').textContent = mm + ':' + ss;
-      }
+        return isPeakDetected;
     }
 
-    requestAnimationFrame(renderLoop);
-  }
+    // --- Final Post-Session Summary Calculator ---
+    function finalizeBPMCalculation() {
+        let detectedTimestamps = [];
+        sessionLog.forEach(sample => {
+            if (sample.isPeak === true) {
+                detectedTimestamps.push(parseFloat(sample.time));
+            }
+        });
 
-  function drawSpectrum() {
-    const spec = computeSpectrum(state.accelBuffer, hpAccel, ACTUAL_SAMPLE_HZ);
-    const rect = canvasSpectrum.getBoundingClientRect();
-    const w = rect.width, h = rect.height;
-    ctxSpectrum.clearRect(0, 0, w, h);
-    if (!spec) return;
+        // Ignore early transient samples from the first 2 seconds of calculation
+        let filteredTimestamps = detectedTimestamps.filter(t => t > 2000);
 
-    const MAX_HZ_DISPLAY = 30;
-    const maxBin = Math.min(spec.mags.length - 1, Math.floor(MAX_HZ_DISPLAY / spec.freqStep));
-    const displayMags = spec.mags.slice(1, maxBin + 1); // drop DC bin (index 0)
-    const maxMag = Math.max(0.0001, ...displayMags);
+        if (filteredTimestamps.length >= 3) {
+            let intervals = [];
+            for (let i = 1; i < filteredTimestamps.length; i++) {
+                intervals.push(filteredTimestamps[i] - filteredTimestamps[i-1]);
+            }
+            let avgIntervalMs = intervals.reduce((s, c) => s + c, 0) / intervals.length;
+            let calculatedBpm = Math.round(60000 / avgIntervalMs);
 
-    // bar chart
-    ctxSpectrum.fillStyle = resolvedAccelColor;
-    const barW = w / displayMags.length;
-    let peakIdx = 0, peakMag = -Infinity;
-    displayMags.forEach((m, i) => {
-      const bh = (m / maxMag) * (h - 14);
-      ctxSpectrum.globalAlpha = 0.85;
-      ctxSpectrum.fillRect(i * barW, h - bh, Math.max(1, barW - 1), bh);
-      if (m > peakMag) { peakMag = m; peakIdx = i; }
-    });
-    ctxSpectrum.globalAlpha = 1;
-
-    // mark cardiac band (0.8-2.0 Hz) for visual reference
-    const bandStartPx = (0.8 / spec.freqStep) / displayMags.length * w;
-    const bandEndPx = (2.0 / spec.freqStep) / displayMags.length * w;
-    ctxSpectrum.strokeStyle = 'rgba(232,176,75,0.5)';
-    ctxSpectrum.lineWidth = 1;
-    ctxSpectrum.setLineDash([3, 3]);
-    ctxSpectrum.beginPath();
-    ctxSpectrum.moveTo(bandStartPx, 0); ctxSpectrum.lineTo(bandStartPx, h);
-    ctxSpectrum.moveTo(bandEndPx, 0); ctxSpectrum.lineTo(bandEndPx, h);
-    ctxSpectrum.stroke();
-    ctxSpectrum.setLineDash([]);
-
-    // Two separate readouts, deliberately not conflated:
-    // (a) the unconstrained global peak — a real diagnostic value, but NOT
-    //     a heart rate claim; sharp cardiac transients throw energy into
-    //     harmonics well above the true beat rate, so the loudest bin in
-    //     the whole spectrum is frequently a harmonic, not the fundamental.
-    // (b) the strongest peak specifically inside the physiologically
-    //     plausible band (0.6-3.0 Hz / 36-180 bpm) — this is the only one
-    //     allowed to be labeled with a bpm-equivalent number.
-    let globalPeakIdx = 0, globalPeakMag = -Infinity;
-    displayMags.forEach((m, i) => { if (m > globalPeakMag) { globalPeakMag = m; globalPeakIdx = i; } });
-    const globalPeakHz = (globalPeakIdx + 1) * spec.freqStep;
-
-    const bandLoBin = Math.max(0, Math.floor(0.6 / spec.freqStep) - 1);
-    const bandHiBin = Math.min(displayMags.length - 1, Math.ceil(3.0 / spec.freqStep) - 1);
-    let bandPeakIdx = bandLoBin, bandPeakMag = -Infinity;
-    for (let i = bandLoBin; i <= bandHiBin; i++) {
-      if (displayMags[i] > bandPeakMag) { bandPeakMag = displayMags[i]; bandPeakIdx = i; }
+            if (calculatedBpm >= 45 && calculatedBpm <= 120) {
+                bpmVal.textContent = calculatedBpm + " BPM";
+                return;
+            }
+        }
+        bpmVal.textContent = "-- BPM";
     }
-    const bandPeakHz = (bandPeakIdx + 1) * spec.freqStep;
 
-    const badge = el('spectrum-peak-badge');
-    if (bandPeakMag > 0) {
-      const bpm = Math.round(bandPeakHz * 60);
-      const ratio = globalPeakMag / Math.max(0.0001, bandPeakMag);
-      badge.textContent = bandPeakHz.toFixed(2) + ' Hz (' + bpm + ' bpm) · band-restricted';
-      const diagEl = el('spectrum-diag');
-      if (diagEl) {
-        diagEl.textContent = 'Unconstrained global peak: ' + globalPeakHz.toFixed(2) + ' Hz (' +
-          ratio.toFixed(1) + '× stronger than in-band peak) — a physiologically impossible global peak that dwarfs the in-band one points to harmonic content or a sensor artifact, not a faster heartbeat.';
-      }
-    } else {
-      badge.textContent = '— Hz';
-    }
-  }
-
-  function setQualityPill(id, q) {
-    const pill = el(id);
-    pill.textContent = q.label;
-    pill.className = 'confidence ' + q.cls;
-  }
-
-})();
-</script>
-
-</body>
-</html>
+    // --- Stage 1: Preparation Countdown Pipeline ---
+    async function initPreparationPhase() {
+        if (!('LinearAccelerationSensor' in window)) {
