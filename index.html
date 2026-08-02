@@ -335,6 +335,7 @@
         <span class="status-dot idle" id="dot-accel"></span>
         <span class="sensor-name">Accelerometer</span>
         <div class="sensor-detail" id="detail-accel">not started</div>
+        <div class="sensor-detail" id="jitter-accel"></div>
       </div>
       <span class="hz-badge" id="hz-accel">— Hz</span>
     </div>
@@ -388,6 +389,7 @@
   <div class="hint">
     Cardiac mechanical energy should cluster as a peak roughly 0.8–2.0 Hz (48–120 bpm) with harmonics extending higher. A flat, broadband, or peak-free spectrum here means what you're seeing in the waveform above is environmental noise (traffic, fan, hand tremor), not a cardiac signal — useful to know either way.
   </div>
+  <div class="hint" id="spectrum-diag" style="border-left-color: var(--amber); margin-top: 6px;"></div>
 </div>
 
 <!-- Live metrics -->
@@ -530,6 +532,25 @@
     const span = (timesArr[timesArr.length - 1] - timesArr[0]) / 1000;
     if (span <= 0) return 0;
     return (timesArr.length - 1) / span;
+  }
+
+  // Detects burst/batched sensor delivery: if samples arrive in clusters
+  // (many samples with ~0ms gaps, followed by a larger gap, repeating) the
+  // std-dev of inter-sample intervals will be large relative to the mean,
+  // and dividing 1000/meanGapOfBurstBoundaries reveals the burst frequency.
+  // This is the diagnostic for hypothesis #2 (batched delivery) vs #1
+  // (real harmonic content of a slower true signal).
+  function computeJitterStats(timesArr) {
+    if (timesArr.length < 10) return null;
+    const deltas = [];
+    for (let i = 1; i < timesArr.length; i++) deltas.push(timesArr[i] - timesArr[i - 1]);
+    const mean = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+    const variance = deltas.reduce((a, b) => a + (b - mean) * (b - mean), 0) / deltas.length;
+    const stdev = Math.sqrt(variance);
+    // count "large gap" boundaries (>2x mean) as candidate burst boundaries
+    const largeGaps = deltas.filter(d => d > mean * 2).length;
+    const burstHz = largeGaps > 0 ? largeGaps / ((timesArr[timesArr.length - 1] - timesArr[0]) / 1000) : 0;
+    return { meanMs: mean, stdevMs: stdev, burstHz };
   }
 
   function onAccelSample(x, y, z) {
@@ -934,6 +955,18 @@
       el('hz-accel').textContent = Math.round(state.accelHz) + ' Hz';
       el('hz-gyro').textContent = Math.round(state.gyroHz) + ' Hz';
 
+      const jitter = computeJitterStats(state.accelSampleTimes);
+      const jitterEl = el('jitter-accel');
+      if (jitter && jitterEl) {
+        if (jitter.burstHz > 0.5) {
+          jitterEl.textContent = 'burst delivery detected: ~' + jitter.burstHz.toFixed(1) + ' Hz (mean gap ' + jitter.meanMs.toFixed(0) + 'ms, σ ' + jitter.stdevMs.toFixed(0) + 'ms)';
+          jitterEl.style.color = 'var(--amber)';
+        } else {
+          jitterEl.textContent = 'even delivery (mean gap ' + jitter.meanMs.toFixed(1) + 'ms, σ ' + jitter.stdevMs.toFixed(1) + 'ms)';
+          jitterEl.style.color = '';
+        }
+      }
+
       if (state.recording && state.recordStart) {
         const elapsed = (nowMs() - state.recordStart) / 1000;
         const mm = Math.floor(elapsed / 60);
@@ -981,11 +1014,36 @@
     ctxSpectrum.stroke();
     ctxSpectrum.setLineDash([]);
 
-    const peakHz = (peakIdx + 1) * spec.freqStep;
+    // Two separate readouts, deliberately not conflated:
+    // (a) the unconstrained global peak — a real diagnostic value, but NOT
+    //     a heart rate claim; sharp cardiac transients throw energy into
+    //     harmonics well above the true beat rate, so the loudest bin in
+    //     the whole spectrum is frequently a harmonic, not the fundamental.
+    // (b) the strongest peak specifically inside the physiologically
+    //     plausible band (0.6-3.0 Hz / 36-180 bpm) — this is the only one
+    //     allowed to be labeled with a bpm-equivalent number.
+    let globalPeakIdx = 0, globalPeakMag = -Infinity;
+    displayMags.forEach((m, i) => { if (m > globalPeakMag) { globalPeakMag = m; globalPeakIdx = i; } });
+    const globalPeakHz = (globalPeakIdx + 1) * spec.freqStep;
+
+    const bandLoBin = Math.max(0, Math.floor(0.6 / spec.freqStep) - 1);
+    const bandHiBin = Math.min(displayMags.length - 1, Math.ceil(3.0 / spec.freqStep) - 1);
+    let bandPeakIdx = bandLoBin, bandPeakMag = -Infinity;
+    for (let i = bandLoBin; i <= bandHiBin; i++) {
+      if (displayMags[i] > bandPeakMag) { bandPeakMag = displayMags[i]; bandPeakIdx = i; }
+    }
+    const bandPeakHz = (bandPeakIdx + 1) * spec.freqStep;
+
     const badge = el('spectrum-peak-badge');
-    if (peakMag > 0) {
-      const bpm = Math.round(peakHz * 60);
-      badge.textContent = peakHz.toFixed(2) + ' Hz (' + bpm + ' bpm-equiv)';
+    if (bandPeakMag > 0) {
+      const bpm = Math.round(bandPeakHz * 60);
+      const ratio = globalPeakMag / Math.max(0.0001, bandPeakMag);
+      badge.textContent = bandPeakHz.toFixed(2) + ' Hz (' + bpm + ' bpm) · band-restricted';
+      const diagEl = el('spectrum-diag');
+      if (diagEl) {
+        diagEl.textContent = 'Unconstrained global peak: ' + globalPeakHz.toFixed(2) + ' Hz (' +
+          ratio.toFixed(1) + '× stronger than in-band peak) — a physiologically impossible global peak that dwarfs the in-band one points to harmonic content or a sensor artifact, not a faster heartbeat.';
+      }
     } else {
       badge.textContent = '— Hz';
     }
