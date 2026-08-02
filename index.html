@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobile SCG Pro Monitor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile SCG Universal Monitor</title>
     <style>
         :root {
             --bg-color: #121212;
@@ -74,9 +74,9 @@
 <body>
 
 <div class="container">
-    <h1>Mobile SCG Pro Monitor</h1>
+    <h1>Mobile SCG Universal Monitor</h1>
     <div class="instructions">
-        <strong>Protocol:</strong> Place the bare phone screen-up on your chest. Tap the button, breathe out completely, and hold still during the 3s countdown!
+        <strong>Protocol:</strong> Place bare phone screen-up on your chest. Tap Initialize, grant permissions when prompted, breathe out fully and hold still!
     </div>
 
     <div class="dashboard">
@@ -108,40 +108,40 @@
     const canvas = document.getElementById('scgChart');
     const ctx = canvas.getContext('2d');
 
-    let sensor = null;
+    let isListening = false;
     let animationFrameId = null;
     let mainInterval = null;
     
-    // Config parameters
-    const sampleRate = 100; 
+    // Configurations
+    const targetSampleRate = 100; // Expected output processing frequency
     const maxDurationSeconds = 15;
     const bufferLength = 400; 
     
-    // Buffers and tracking matrices
+    // Memory matrices
     let dataBuffer = new Array(bufferLength).fill(0);
-    let markerBuffer = new Array(bufferLength).fill(false); // Flags to show detected peaks visually
+    let markerBuffer = new Array(bufferLength).fill(false); 
     let sessionLog = []; 
     let startTime = 0;
     let recordTimeLeft = maxDurationSeconds;
 
-    // --- Peak Detection Logic Helper Variables ---
+    // Peak Tracker Parameters
     let sampleCounter = 0;
     let lastPeakIndex = 0;
-    const minPeakDistanceSamples = sampleRate * 0.55; // Limits peaks to ~110 BPM max boundary
-    let dynamicThreshold = 0.05; // Initial seed threshold
+    const minPeakDistanceSamples = targetSampleRate * 0.55; 
+    let dynamicThreshold = 0.05; 
 
     // --- IIR Butterworth Bandpass Filter (1 Hz - 30 Hz @ 100 Hz Sampling) ---
     const b = [0.1215, 0, -0.2431, 0, 0.1215];
     const a = [1.0000, -2.1215, 1.9542, -0.8715, 0.1856];
-    let x =;
-    let y =;
+    let x = [0, 0, 0, 0, 0];
+    let y = [0, 0, 0, 0, 0];
 
     function processSignal(rawValue) {
         x.unshift(rawValue);
         x.pop();
 
         let filteredValue = (b[0] * x[0]) + (b[1] * x[1]) + (b[2] * x[2]) + (b[3] * x[3]) + (b[4] * x[4])
-                            - (a[1] * y[0]) - (a[2] * y[1]) - (a[3] * y[2]) - (a[4] * y[3]);
+                            - (a[1] * y[1]) - (a[2] * y[2]) - (a[3] * y[3]) - (a[4] * y[4]);
 
         y.unshift(filteredValue);
         y.pop();
@@ -149,7 +149,7 @@
         return filteredValue;
     }
 
-    // --- Canvas Rendering Window Loop (With Peak Markers) ---
+    // --- High-Performance Canvas Graphic Loop ---
     function resizeCanvas() {
         canvas.width = canvas.clientWidth * window.devicePixelRatio;
         canvas.height = canvas.clientHeight * window.devicePixelRatio;
@@ -161,7 +161,6 @@
     function drawGraph() {
         ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
         
-        // Zero-line baseline reference
         ctx.strokeStyle = '#222222';
         ctx.beginPath();
         ctx.moveTo(0, canvas.clientHeight / 2);
@@ -170,9 +169,9 @@
 
         const step = canvas.clientWidth / bufferLength;
         const midY = canvas.clientHeight / 2;
-        const scale = 200; // Amplifies microvolt accelerometer oscillations
+        const scale = 250; 
 
-        // Render the primary SCG Green Waveform
+        // Primary Green Stream
         ctx.strokeStyle = '#00e676';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -184,43 +183,39 @@
         }
         ctx.stroke();
 
-        // Render Red Triangle Markers above detected heartbeat peaks
+        // Red Peak Triangle Overlay
         for (let i = 0; i < markerBuffer.length; i++) {
             if (markerBuffer[i] === true) {
                 let xPos = i * step;
-                let yPos = midY - (dataBuffer[i] * scale) - 15; // Suspend slightly above peak apex
+                let yPos = midY - (dataBuffer[i] * scale) - 12;
                 
                 ctx.fillStyle = '#ff1744';
                 ctx.beginPath();
-                ctx.moveTo(xPos, yPos);          // Top corner of triangle
-                ctx.lineTo(xPos - 5, yPos + 10); // Bottom left
-                ctx.lineTo(xPos + 5, yPos + 10); // Bottom right
+                ctx.moveTo(xPos, yPos);
+                ctx.lineTo(xPos - 5, yPos + 10);
+                ctx.lineTo(xPos + 5, yPos + 10);
                 ctx.closePath();
                 ctx.fill();
             }
         }
-
         animationFrameId = requestAnimationFrame(drawGraph);
     }
 
-    // --- On-The-Fly Heart Rate Tracking Engine ---
+    // --- On-The-Fly Realtime Peak Interceptor ---
     function performRealTimePeakDetection(currentFilteredVal) {
         sampleCounter++;
         let isPeakDetected = false;
 
-        // Maintain a rolling estimate of peak thresholding after the filter settles down
-        if (sampleCounter > sampleRate * 2 && Math.abs(currentFilteredVal) > dynamicThreshold) {
-            // Adaptively scale threshold bounds to prevent environmental drift locking
+        if (sampleCounter > targetSampleRate * 2 && Math.abs(currentFilteredVal) > dynamicThreshold) {
             dynamicThreshold = (dynamicThreshold * 0.98) + (Math.abs(currentFilteredVal) * 0.02);
         }
 
-        // Evaluate local mathematical maxima criteria across standard shift windows
         let historicalLength = dataBuffer.length;
         let p0 = dataBuffer[historicalLength - 3];
-        let p1 = dataBuffer[historicalLength - 2]; // Evaluation apex index target
+        let p1 = dataBuffer[historicalLength - 2]; 
         let p2 = dataBuffer[historicalLength - 1];
 
-        if (p1 > p0 && p1 > p2 && p1 > (dynamicThreshold * 0.75)) {
+        if (p1 > p0 && p1 > p2 && p1 > (dynamicThreshold * 0.70)) {
             if ((sampleCounter - lastPeakIndex) > minPeakDistanceSamples) {
                 isPeakDetected = true;
                 lastPeakIndex = sampleCounter;
@@ -229,7 +224,7 @@
         return isPeakDetected;
     }
 
-    // --- Final Post-Session Summary Calculator ---
+    // --- Session End BPM Finalizer ---
     function finalizeBPMCalculation() {
         let detectedTimestamps = [];
         sessionLog.forEach(sample => {
@@ -238,7 +233,6 @@
             }
         });
 
-        // Ignore early transient samples from the first 2 seconds of calculation
         let filteredTimestamps = detectedTimestamps.filter(t => t > 2000);
 
         if (filteredTimestamps.length >= 3) {
@@ -257,6 +251,25 @@
         bpmVal.textContent = "-- BPM";
     }
 
-    // --- Stage 1: Preparation Countdown Pipeline ---
-    async function initPreparationPhase() {
-        if (!('LinearAccelerationSensor' in window)) {
+    // --- Central Motion Event Router Pipeline ---
+    function handleDeviceMotion(event) {
+        if (!isListening) return;
+
+        // Extracts clear linear z-acceleration vectors across alternate device variants
+        let rawZ = 0;
+        if (event.accelerationWithoutGravity && event.accelerationWithoutGravity.z !== null) {
+            rawZ = event.accelerationWithoutGravity.z;
+        } else if (event.acceleration && event.acceleration.z !== null) {
+            rawZ = event.acceleration.z; // High reliability Android hardware map backup
+        } else {
+            return; // Exit out if empty tracking frames hit
+        }
+
+        let relativeTime = performance.now() - startTime;
+        let filteredZ = processSignal(rawZ);
+
+        dataBuffer.push(filteredZ);
+        dataBuffer.shift();
+
+        let peakStatus = performRealTimePeakDetection(filteredZ);
+
