@@ -2,2142 +2,812 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Autonomic Vitality Engine</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SeismoScope — Cardiac Mechanics Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-
-  :root{
-    --bg: #0B1210; --panel: #11201B; --panel-2: #16241E;
-    --trace: #4FD9C4; --trace-dim: rgba(79,217,196,0.25);
-    --amber: #F0B429; --amber-dim: rgba(240,180,41,0.15);
-    --violet: #B399F0; --coral: #E5686B; --coral-dim: rgba(229,104,107,0.15);
-    --burnt: #E0672A;
-    --text: #E7F3EE; --muted: #7C948C; --line: #22352E; --danger: #E5686B;
+  :root {
+    --bg: #0B1210;
+    --panel: #11201B;
+    --panel-2: #16241E;
+    --trace: #4FD9C4;
+    --amber: #E8B04B;
+    --violet: #A48CF0;
+    --coral: #E8735E;
+    --burnt: #C4623A;
+    --text: #E7F1EC;
+    --text-dim: #8FA79C;
+    --text-faint: #5C7268;
+    --border: rgba(143, 167, 156, 0.16);
+    --gyro-color: var(--violet);
+    --accel-color: var(--trace);
   }
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
-  body{
-    background: radial-gradient(120% 140% at 50% -10%, #10201A 0%, var(--bg) 55%);
-    color:var(--text); font-family:'IBM Plex Sans',-apple-system,sans-serif;
-    min-height:100vh; padding:24px 14px 50px; display:flex; justify-content:center;
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height: 100vh;
+    padding: 16px;
+    -webkit-tap-highlight-color: transparent;
   }
-  .wrap{ width:100%; max-width:560px; }
-  header{ margin-bottom:18px; }
-  .eyebrow{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.18em; color:var(--trace);
-    text-transform:uppercase; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-  .eyebrow::before{ content:''; width:7px; height:7px; border-radius:50%; background:var(--trace); box-shadow:0 0 8px var(--trace); }
-  h1{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:clamp(24px,6vw,32px); margin:0 0 6px; letter-spacing:-.01em; }
-  h2{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:15px; margin:0; }
-  .sub{ color:var(--muted); font-size:13.5px; line-height:1.5; }
-  .disclaimer{ margin-top:14px; background:var(--amber-dim); border:1px solid rgba(240,180,41,.35); color:#F3D28B;
-    font-size:12.5px; line-height:1.5; padding:11px 13px; border-radius:8px; display:flex; gap:9px; }
 
-  .panel{ background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line);
-    border-radius:14px; padding:16px; margin-top:14px; }
-  .panel-label{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
-    color:var(--muted); margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
+  h1, h2, h3, .mono, .metric-value, .metric-label, .hz-badge {
+    font-family: 'IBM Plex Mono', monospace;
+  }
 
-  .cam-shell{ position:relative; aspect-ratio:4/3; background:#05100C; border-radius:10px; overflow:hidden; border:1px solid var(--line); }
-  video{ width:100%; height:100%; object-fit:cover; transform:scaleX(-1); display:block; }
-  .guide{ position:absolute; top:50%; left:50%; width:42%; aspect-ratio:.78; transform:translate(-50%,-50%);
-    border:2px solid var(--trace-dim); border-radius:50%/45%; pointer-events:none; transition:border-color .3s,box-shadow .3s; }
-  .guide.active{ border-color:var(--trace); box-shadow:0 0 24px rgba(79,217,196,.25) inset; }
-  .finger-guide{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:10px; padding:22px; text-align:center; color:var(--trace); background:rgba(5,16,12,.55); font-size:12.5px; line-height:1.5; }
-  .finger-guide b{ color:#fff; }
-  .cam-empty{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:12px; color:var(--muted); font-size:12.5px; text-align:center; padding:18px; }
+  header {
+    margin-bottom: 20px;
+  }
 
-  .status-row{ display:flex; align-items:center; justify-content:space-between; margin-top:10px;
-    font-family:'IBM Plex Mono',monospace; font-size:12px; }
-  .status-text{ color:var(--trace); } .timer{ color:var(--muted); }
-  .amp-row{ display:flex; justify-content:space-between; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--muted); margin-top:6px; }
-  .amp-row .ok{ color:var(--trace); } .amp-row .low{ color:var(--coral); }
+  header h1 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text);
+  }
 
-  button{ font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; letter-spacing:.03em;
-    padding:12px 18px; border-radius:8px; border:1px solid var(--trace); background:var(--trace); color:#06231D;
-    cursor:pointer; width:100%; margin-top:12px; }
-  button.stop{ background:var(--coral); border-color:var(--coral); color:#2A0808; }
-  button:disabled{ opacity:.45; cursor:not-allowed; }
-  button.secondary{ background:transparent; color:var(--muted); border-color:var(--line); font-size:11.5px; padding:8px 14px; width:auto; margin-top:0; }
-  .mode-toggle{ display:flex; gap:4px; background:#0D1915; border:1px solid var(--line); border-radius:8px; padding:3px; }
-  .mode-btn{ all:unset; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.05em;
-    padding:5px 10px; border-radius:6px; color:var(--muted); }
-  .mode-btn.active{ background:var(--trace); color:#06231D; font-weight:600; }
-  .mode-btn:disabled{ opacity:.4; }
+  header .subtitle {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
 
-  canvas.trace{ width:100%; height:110px; display:block; border-radius:8px; margin-top:10px;
-    background: linear-gradient(var(--line) 1px, transparent 1px) 0 0/100% 20%,
-                linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0/12.5% 100%, #05100C;
-    border:1px solid var(--line); }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
 
-  .bpm-display{ display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 0 4px; }
-  .bpm-number{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:clamp(46px,10vw,60px); line-height:1;
-    color:var(--trace); text-shadow:0 0 30px rgba(79,217,196,.35); font-variant-numeric:tabular-nums; }
-  .bpm-number.dim{ color:var(--muted); text-shadow:none; }
-  .bpm-unit{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:.14em; margin-top:2px; }
-  .confidence{ margin-top:8px; font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.06em;
-    padding:4px 10px; border-radius:20px; border:1px solid var(--line); color:var(--muted); text-align:center; }
-  .confidence.high{ color:#8FF0D9; border-color:rgba(79,217,196,.4); }
-  .confidence.medium{ color:var(--amber); border-color:rgba(240,180,41,.4); }
-  .confidence.low{ color:var(--danger); border-color:rgba(229,104,107,.4); }
+  .panel-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
 
-  .metric-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
-  .metric-row.cols3{ grid-template-columns:1fr 1fr 1fr; }
-  .metric-card{ background:#0D1915; border:1px solid var(--line); border-radius:10px; padding:10px 12px; text-align:center; }
-  .metric-card .m-label{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
-  .metric-card .m-value{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:20px; margin-top:4px; color:var(--violet); }
-  .metric-card .m-value.dim{ color:var(--muted); }
-  .metric-card .m-sub{ font-size:10px; color:var(--muted); margin-top:2px; }
+  .hint {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    border-left: 2px solid var(--border);
+    padding-left: 10px;
+    line-height: 1.5;
+    margin-top: 10px;
+  }
 
-  .interp-box{ margin-top:12px; background:#0D1915; border-left:3px solid var(--trace); border-radius:6px; padding:10px 12px; font-size:12.5px; line-height:1.5; color:var(--text); }
-  .interp-box.amber{ border-left-color:var(--amber); }
+  /* Placement selector */
+  .placement-toggle {
+    display: flex;
+    gap: 8px;
+  }
 
-  .balance-bar{ display:flex; height:22px; border-radius:8px; overflow:hidden; margin-top:10px; }
-  .balance-bar .lf-fill{ background:var(--amber); display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700; color:#241a03; }
-  .balance-bar .hf-fill{ background:var(--trace); display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:700; color:#06231D; }
-  #spectrum-canvas{ width:100%; height:120px; display:block; margin-top:10px; }
-  .band-legend{ display:flex; gap:14px; font-size:10.5px; color:var(--muted); margin-top:6px; }
-  .band-legend .dot{ display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+  .placement-btn {
+    flex: 1;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 8px;
+    color: var(--text-dim);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.82rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
 
-  .checklist{ display:flex; flex-direction:column; gap:8px; margin-top:10px; }
-  .check-row{ display:flex; justify-content:space-between; align-items:center; background:#0D1915; border:1px solid var(--line);
-    border-radius:8px; padding:9px 12px; font-size:12.5px; }
-  .check-row .q{ display:flex; gap:8px; align-items:baseline; }
-  .check-row .q .n{ font-family:'IBM Plex Mono',monospace; color:var(--muted); font-size:11px; }
-  .check-answer{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:12px; padding:3px 10px; border-radius:20px; }
-  .ans-yes{ background:var(--trace-dim); color:#8FF0D9; }
-  .ans-no{ background:var(--coral-dim); color:var(--danger); }
-  .ans-na{ background:rgba(124,148,140,.15); color:var(--muted); }
+  .placement-btn.active {
+    border-color: var(--trace);
+    color: var(--trace);
+    background: rgba(79, 217, 196, 0.08);
+  }
 
-  table{ width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:11.5px; }
-  th{ text-align:left; color:var(--muted); font-weight:500; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
-    padding:6px 6px; border-bottom:1px solid var(--line); }
-  td{ padding:7px 6px; border-bottom:1px solid var(--line); }
+  /* Metric cards */
+  .metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
 
-  .hint{ font-size:11.5px; color:var(--muted); line-height:1.5; margin-top:10px; border-left:2px solid var(--line); padding-left:9px; }
+  .metric-card {
+    background: var(--panel-2);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
 
-  .report-state-name{ font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:21px; text-align:center;
-    padding:6px 0 2px; letter-spacing:-.01em; }
-  .report-state-name.state-calm{ color:var(--trace); }
-  .report-state-name.state-mild{ color:var(--violet); }
-  .report-state-name.state-acute{ color:var(--amber); }
-  .report-state-name.state-chronic{ color:var(--burnt); }
-  .report-state-name.state-depleted{ color:var(--coral); }
-  .state-spectrum{ position:relative; height:8px; border-radius:5px; margin:12px 2px 4px;
-    background: linear-gradient(90deg,
-      var(--trace) 0%, var(--trace) 25%,
-      var(--violet) 25%, var(--violet) 45%,
-      var(--amber) 45%, var(--amber) 70%,
-      var(--coral) 70%, var(--coral) 100%); }
-  .state-spectrum-marker{ position:absolute; top:-3px; width:3px; height:14px; background:#fff;
-    border-radius:2px; box-shadow:0 0 4px rgba(0,0,0,.6); transform:translateX(-50%); }
-  .hint b{ color:var(--text); }
-  footer{ margin-top:22px; font-size:11.5px; color:var(--muted); line-height:1.6; border-top:1px solid var(--line); padding-top:14px; }
+  .metric-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+  }
 
-  .report-header-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
-  .report-meta{ font-size:11px; color:var(--muted); margin:-4px 0 10px; }
-  .report-section-title{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--muted); margin:20px 0 8px; padding-top:14px; border-top:1px solid var(--line); }
+  .metric-value {
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-top: 4px;
+  }
 
-  #webcam-stream-hidden, #proc-canvas{ display:none; }
+  .metric-value .unit {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    font-weight: 400;
+  }
 
-  /* ============== PRINT / PDF EXPORT ==============
-     Only the report panel prints; everything else (live capture UI,
-     camera previews, buttons, history table) is hidden. Switches to a
-     plain light background — a dark terminal theme wastes ink and reads
-     poorly as a printed clinical document. */
-  @media print {
-    body { background: #fff !important; color: #111 !important; padding: 0; }
-    .wrap { max-width: 100%; }
-    header, .panel:not(.report-print-area), footer { display: none !important; }
-    .report-print-area {
-      display: flex !important; background: #fff !important; border: none !important;
-      color: #111 !important; padding: 0;
-    }
-    .report-print-area .panel-label { color: #111 !important; }
-    .report-print-area .report-meta, .report-print-area .hint, .report-print-area .m-label { color: #444 !important; }
-    .report-print-area .metric-card { background: #f4f4f4 !important; border: 1px solid #ccc !important; }
-    .report-print-area .interp-box { background: #f4f4f4 !important; color: #111 !important; }
-    .report-print-area .m-value { color: #111 !important; }
-    .no-print { display: none !important; }
-    .report-section-title { border-top-color: #ccc !important; color: #555 !important; page-break-after: avoid; }
-    .report-state-name { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    canvas { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .metric-value.accent { color: var(--accel-color); }
+  .metric-value.gyro-accent { color: var(--gyro-color); }
+
+  /* Confidence pill */
+  .confidence {
+    display: inline-block;
+    font-size: 0.68rem;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .confidence.high { background: rgba(79, 217, 196, 0.15); color: var(--trace); }
+  .confidence.medium { background: rgba(232, 176, 75, 0.15); color: var(--amber); }
+  .confidence.low { background: rgba(232, 115, 94, 0.15); color: var(--coral); }
+  .confidence.none { background: rgba(143, 167, 156, 0.1); color: var(--text-dim); }
+
+  /* Canvas waveform */
+  .wave-wrap {
+    position: relative;
+    width: 100%;
+    height: 140px;
+    background: #0D1714;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+
+  .wave-wrap canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .wave-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-top: 6px;
+    padding-left: 2px;
+  }
+
+  .wave-legend span { display: flex; align-items: center; gap: 6px; }
+
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* Buttons */
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-primary {
+    background: var(--trace);
+    color: #0B1210;
+  }
+
+  .btn-primary:active { transform: scale(0.98); }
+
+  .btn-primary.recording {
+    background: var(--coral);
+    color: #1a0f0d;
+  }
+
+  .btn-secondary {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  /* Sensor status grid */
+  .sensor-status {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sensor-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .sensor-row:last-child { border-bottom: none; }
+
+  .sensor-name { color: var(--text); }
+  .sensor-detail { color: var(--text-faint); font-size: 0.72rem; margin-top: 2px; }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block; margin-right: 6px;
+  }
+  .status-dot.ok { background: var(--trace); }
+  .status-dot.warn { background: var(--amber); }
+  .status-dot.err { background: var(--coral); }
+  .status-dot.idle { background: var(--text-faint); }
+
+  .hz-badge {
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    background: var(--panel-2);
+    padding: 2px 8px;
+    border-radius: 6px;
+  }
+
+  #permission-gate {
+    text-align: center;
+    padding: 24px 16px;
+  }
+
+  #permission-gate p {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+
+  .interp-box {
+    border-left: 3px solid var(--trace);
+    background: rgba(79, 217, 196, 0.05);
+    padding: 10px 12px;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .hidden { display: none !important; }
+
+  footer {
+    text-align: center;
+    font-size: 0.68rem;
+    color: var(--text-faint);
+    padding: 20px 0 8px;
+    line-height: 1.6;
   }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="eyebrow">rPPG · touch · pupillary reflex</div>
-    <h1>Autonomic Vitality Engine</h1>
-    <div class="sub">Estimates heart rate, HRV (RMSSD, SDNN), respiration, and pupillary
-      light reflex from your camera and touchscreen — no external sensors.</div>
-    <div class="disclaimer">
-      <span>⚠</span>
-      <span><b>Experimental, not medical.</b> Not FDA cleared, not validated against clinical devices. HR is
-        reasonably established via camera PPG; HRV, RR, and LF/HF are rougher estimates, and the PLR test is
-        a consumer-camera approximation — not clinical pupillometry. Don't use any of this for diagnosis;
-        consult a clinician for health concerns.</span>
-    </div>
-  </header>
 
-  <!-- ===================== PULSE CAPTURE PANEL ===================== -->
-  <div class="panel">
-    <div class="panel-label">
-      <span>Camera — Fingertip PPG</span>
-      <div class="mode-toggle" id="modeToggle">
-        <button class="mode-btn active" id="mode30s">30s</button>
-        <button class="mode-btn" id="modeCont">Continuous</button>
-      </div>
+<header>
+  <h1>SeismoScope</h1>
+  <div class="subtitle">Cardiac mechanics from your phone's motion sensors — not a medical device</div>
+</header>
+
+<!-- Placement selector -->
+<div class="panel">
+  <div class="panel-title">Phone Placement</div>
+  <div class="placement-toggle">
+    <div class="placement-btn active" data-placement="lying" id="btn-lying">
+      Lying flat<br><span style="font-size:0.7rem; color:var(--text-faint)">phone on chest</span>
     </div>
-    <div class="cam-shell">
-      <video id="webcam-stream" autoplay playsinline muted style="display:none;"></video>
-      <div class="finger-guide" id="fingerGuide">
-        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 11.5V6a1.5 1.5 0 013 0v5.5M12 11.5V5a1.5 1.5 0 013 0v6.5M15 11.5V7a1.5 1.5 0 013 0v7c0 3.5-2 6-5.5 6S6 20 6 16.5v-3a1.5 1.5 0 013 0"/></svg>
-        <div>Cover the rear camera <b>and</b> flash completely with your fingertip. Hold still, light but steady pressure.</div>
-      </div>
+    <div class="placement-btn" data-placement="held" id="btn-held">
+      Seated / standing<br><span style="font-size:0.7rem; color:var(--text-faint)">held to chest</span>
     </div>
-    <div class="status-row"><div class="status-text" id="scanStatusText">Ready</div><div class="timer" id="scanTimer"></div></div>
-    <div class="amp-row"><span>Signal amplitude: <span id="ampReadout">--</span></span><span id="ampStatus">not scanning</span></div>
-    <button id="mainBtn">Start 30-Second Scan</button>
   </div>
-
-  <!-- ===================== READING PANEL (live during + after scan) ===================== -->
-  <div class="panel">
-    <div class="panel-label"><span>Reading</span></div>
-    <div class="bpm-display">
-      <div class="bpm-number dim" id="bpmNumber">—</div>
-      <div class="bpm-unit">beats per minute</div>
-      <div class="confidence" id="hrConfidence">no reading yet</div>
-    </div>
-    <canvas class="trace" id="waveformCanvas"></canvas>
-    <div class="amp-row" style="margin-top:2px;"><span><span style="color:#5DCAA5;">●</span> inhale start</span><span><span style="color:#EF9F27;">●</span> exhale start</span></div>
-    <button class="secondary" id="breathMarkBtn" style="width:100%; margin-top:6px; display:none;">Mark: inhale starting</button>
-    <div class="metric-row cols3">
-      <div class="metric-card"><div class="m-label">RMSSD</div><div class="m-value dim" id="rmssdVal">—</div><div class="m-sub">ms</div></div>
-      <div class="metric-card"><div class="m-label">SDNN</div><div class="m-value dim" id="sdnnVal">—</div><div class="m-sub">ms</div></div>
-      <div class="metric-card"><div class="m-label">Respiration</div><div class="m-value dim" id="rrVal">—</div><div class="m-sub">breaths/min</div></div>
-    </div>
-    <div class="hint" id="qualityHint">Signal quality and beat-correction notes appear here once beats are detected.</div>
+  <div class="hint" id="placement-hint">
+    Lie down, place the phone screen-up directly over the lower sternum (breastbone), and hold still. This orientation gives the most stable signal and matches most published SCG methodology.
   </div>
-
-  <!-- ===================== FREQUENCY DOMAIN PANEL ===================== -->
-  <div class="panel" id="freqPanel" style="display:none;">
-    <div class="panel-label"><span>Frequency-Domain PRV</span><span class="confidence" id="freqConfidence">--</span></div>
-    <div class="sub" style="margin:-4px 0 4px;">Pulse Rate Variability (PPG-derived) — a proxy for ECG-based HRV. Agrees
-      well at rest; known to diverge under exertion, movement, or arterial stiffness, since pulse transit time adds
-      its own variability on top of true beat timing.</div>
-    <canvas id="spectrum-canvas"></canvas>
-    <div class="band-legend">
-      <span><span class="dot" style="background:var(--amber);"></span>LF 0.04–0.15 Hz</span>
-      <span><span class="dot" style="background:var(--trace);"></span>HF 0.15–0.40 Hz</span>
-    </div>
-    <div class="metric-row cols3">
-      <div class="metric-card"><div class="m-label">LF Power</div><div class="m-value" id="lfVal">—</div><div class="m-sub">ms²</div></div>
-      <div class="metric-card"><div class="m-label">HF Power</div><div class="m-value" id="hfVal">—</div><div class="m-sub">ms²</div></div>
-      <div class="metric-card"><div class="m-label">VLF Power</div><div class="m-value" id="vlfVal">—</div><div class="m-sub">ms²</div></div>
-    </div>
-    <div class="metric-row">
-      <div class="metric-card"><div class="m-label">Total Power</div><div class="m-value" id="tpVal">—</div><div class="m-sub">ms² &middot; LF+HF(+VLF)</div></div>
-      <div class="metric-card"><div class="m-label">LF/HF Ratio</div><div class="m-value" id="lfhfVal">—</div><div class="m-sub">ratio</div></div>
-    </div>
-    <div class="hint" id="tpHint">Total power gives context for the LF/HF ratio above — the same ratio means less
-      when total power is very low (weak overall signal) than when total power is robust.</div>
-    <div class="balance-bar"><div class="lf-fill" id="lfFill" style="width:50%;">LF --%</div><div class="hf-fill" id="hfFill" style="width:50%;">HF --%</div></div>
-    <div class="interp-box" id="interpBox">Interpretation appears once enough beats are captured.</div>
-  </div>
-
-  <!-- ===================== PLR PANEL ===================== -->
-  <div class="panel">
-    <div class="panel-label"><span>Pupillary Light Reflex (PLR)</span></div>
-    <div class="sub" style="margin:-4px 0 4px;">"Right Eye" / "Left Eye" below refer to <b>your own</b> right and
-      left eye (not mirrored, i.e. not left/right as they appear in the on-screen preview).</div>
-    <div class="cam-shell" style="aspect-ratio:1/1; max-width:260px; margin:0 auto; border-radius:50%;">
-      <video id="pupil-video" autoplay playsinline muted></video>
-      <div class="guide" id="eyeGuideRing" style="width:88%; aspect-ratio:1;"></div>
-    </div>
-    <div class="status-row"><div class="status-text" id="pupilStatusText">Uses the front camera — run separately from the finger scan.</div></div>
-    <canvas class="trace" id="pupilTraceCanvas" style="height:70px;"></canvas>
-    <div class="checklist" id="plrChecklist" style="display:none;"></div>
-    <div class="metric-row" id="plrNumbers" style="display:none;">
-      <div class="metric-card"><div class="m-label">Baseline Pupil</div><div class="m-value" id="plrBaselineMm">—</div><div class="m-sub">mm (est.)</div></div>
-      <div class="metric-card"><div class="m-label">Min. Pupil (flash)</div><div class="m-value" id="plrMinMm">—</div><div class="m-sub">mm (est.)</div></div>
-      <div class="metric-card"><div class="m-label">Avg. Constriction</div><div class="m-value" id="plrConstriction">—</div></div>
-      <div class="metric-card"><div class="m-label">Right Eye</div><div class="m-value" id="plrConstrictionRight">—</div><div class="m-sub">constriction</div></div>
-      <div class="metric-card"><div class="m-label">Left Eye</div><div class="m-value" id="plrConstrictionLeft">—</div><div class="m-sub">constriction</div></div>
-      <div class="metric-card"><div class="m-label">Latency</div><div class="m-value" id="plrLatency">—</div><div class="m-sub">ms</div></div>
-      <div class="metric-card"><div class="m-label">Recovery (90%)</div><div class="m-value" id="plrRecovery">—</div><div class="m-sub">ms</div></div>
-    </div>
-    <div class="hint" id="asymmetryHint" style="display:none;"></div>
-    <div class="hint" id="mmCaveat">Pupil mm is estimated by using average adult iris diameter (~11.7mm, anatomically
-      stable, an established calibration technique in eye-tracking research) as a built-in ruler, then locating the
-      pupil's dark boundary in the image via pixel-brightness analysis. This second step is experimental and
-      hasn't been validated against real hardware — treat these mm values as a rough estimate, not a measurement.</div>
-    <button class="secondary" id="pupilBtn" style="width:100%; margin-top:10px;">Run 8-Second PLR Test</button>
-  </div>
-
-  <!-- ===================== EYE MOVEMENT PANEL ===================== -->
-  <div class="panel">
-    <div class="panel-label"><span>Guided Eye Movement &amp; Fixation Stability</span></div>
-    <div class="sub" style="margin-bottom:8px;">Uses <b>spoken audio cues and a tone</b> for direction changes —
-      not on-screen text — since you can't read the screen while looking away from it. Screens gross extraocular
-      movement in four directions, then a brief fixation-stability check. Not a substitute for a clinical exam;
-      cannot detect true ocular torsion (rotation) or fast (VNG-grade) nystagmus, which need equipment beyond a
-      consumer webcam.</div>
-    <div class="hint">Known limitation: downward gaze narrows the visible eyelid opening in a way that's hard to
-      tell apart from a genuine blink using this front-camera technique, so the "down" direction is tracked less
-      reliably than up/right/left — sometimes it registers, sometimes it doesn't, across otherwise-identical
-      conditions. Up, right, and left have tested reliably across lighting, distance, and phone-angle variations.
-      Treat a "down" result here with lower confidence than the other three directions.</div>
-    <div class="cam-shell" style="aspect-ratio:1/1; max-width:260px; margin:0 auto; border-radius:50%;">
-      <video id="eom-video" autoplay playsinline muted></video>
-      <div class="guide" id="eomGuideRing" style="width:88%; aspect-ratio:1;"></div>
-    </div>
-    <div class="status-row"><div class="status-text" id="eomStatusText">Turn your device sound on. Listen for the spoken direction and tone — you don't need to read anything during the test.</div></div>
-    <div class="bpm-display" style="padding:4px 0;"><div class="bpm-number" id="eomPrompt" style="font-size:28px;">—</div></div>
-    <div class="checklist" id="eomChecklist" style="display:none;"></div>
-    <button class="secondary" id="eomBtn" style="width:100%; margin-top:10px;">Run Eye Movement + Stability Test (~20s, audio-guided)</button>
-  </div>
-
-  <!-- ===================== HISTORY PANEL ===================== -->
-  <div class="panel">
-    <div class="panel-label"><span>History (this device/browser only)</span><button class="secondary" id="clearHistoryBtn">Clear</button></div>
-    <table>
-      <thead><tr><th>Time</th><th>HR</th><th>RMSSD</th><th>SDNN</th><th>RR</th><th>LF/HF</th><th>Conf.</th><th>State</th></tr></thead>
-      <tbody id="historyBody"><tr><td colspan="8" style="color:var(--muted); text-align:center; padding:12px;">No readings yet</td></tr></tbody>
-    </table>
-  </div>
-
-  <!-- ===================== AUTONOMIC STATE REPORT ===================== -->
-  <div class="panel report-print-area" id="reportPanel" style="display:none;">
-    <div class="panel-label report-header-row">
-      <span>Autonomic Nervous System — Full Report</span>
-      <button class="secondary no-print" id="printReportBtn">Download / Print (PDF)</button>
-    </div>
-    <div class="report-meta">Generated <span id="reportDate">—</span> · Single-session snapshot, not a longitudinal diagnosis</div>
-
-    <div class="report-state-name" id="reportStateName">—</div>
-    <div class="state-spectrum"><div class="state-spectrum-marker" id="reportMarker" style="left:50%;"></div></div>
-    <div class="amp-row" style="margin-top:2px;"><span>Calm</span><span>Mild</span><span>Acute</span><span>Sustained / Depleted</span></div>
-    <div class="interp-box" id="reportDescription" style="margin-top:14px;"></div>
-    <div class="metric-row cols3" id="reportMetrics"></div>
-
-    <div class="report-section-title">Heart Rate Trend (This Session)</div>
-    <div id="hrTrendBox" style="display:none;">
-      <canvas class="trace" id="hrTrendCanvas" style="height:110px;"></canvas>
-      <div class="hint">Instantaneous heart rate per detected beat across the full session, with a dashed line
-        at the session mean.</div>
-    </div>
-
-    <div class="report-section-title">Sympathetic Activation vs. Autonomic Reserve</div>
-    <div id="balanceQuadrantBox" style="display:none;">
-      <canvas id="balanceQuadrantCanvas" style="width:200px; height:200px;"></canvas>
-      <div class="hint">Plots this session's Activation Index (horizontal) against overall variability/reserve
-        (vertical, from Total Power or SDNN) — the same two-axis logic behind the Calm/Mild/Acute/Sustained/
-        Depleted classification above, shown spatially. The quadrant a point falls in is descriptive, not a
-        clinical grading zone.</div>
-    </div>
-
-    <div class="report-section-title">RR-Interval Scatter (Poincaré Plot)</div>
-    <div id="poincareBox" style="display:none;">
-      <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
-        <canvas id="poincareCanvas" style="width:180px; height:180px; flex-shrink:0;"></canvas>
-        <div style="flex:1; min-width:140px;">
-          <div class="metric-card" style="margin-bottom:8px;"><div class="m-label">SD1 (short-term variability)</div><div class="m-value" id="sd1Val">—</div></div>
-          <div class="metric-card"><div class="m-label">SD2 (long-term variability)</div><div class="m-value" id="sd2Val">—</div></div>
-        </div>
-      </div>
-      <div class="hint">Each point plots one beat-to-beat interval against the next. A wider, more scattered
-        cloud generally reflects healthier short-term variability; a narrow, compressed line reflects reduced
-        variability. SD1/SD2 are derived directly from the RMSSD/SDNN values above using the standard textbook
-        relationship, not measured independently.</div>
-    </div>
-
-    <div class="report-section-title">Mean Pulse Wave</div>
-    <div id="pulseWaveBox" style="display:none;">
-      <canvas class="trace" id="pulseWaveCanvas" style="height:100px;"></canvas>
-      <div class="hint">Ensemble average of <span id="pulseWaveBeatCount">—</span> individual detected beats,
-        each time-normalized and shape-normalized before averaging. Shows the canonical shape of your pulse
-        waveform (rise and decay pattern) for this session; the vertical axis is a normalized shape scale, not a
-        calibrated physical unit, so amplitude here isn't independently meaningful with this camera setup.</div>
-    </div>
-
-    <div class="report-section-title">Pupillary Light Reflex Summary</div>
-    <div id="reportPlrBox"></div>
-
-    <div class="report-section-title">Eye Movement Summary</div>
-    <div id="reportEomBox"></div>
-
-    <div class="report-section-title">Bilateral Flow Assessment</div>
-    <div class="hint"><b>Not available on this device.</b> A genuine left/right vascular symmetry ("bilateral
-      flow") assessment requires two PPG sensors reading simultaneously (e.g. both hands measured at once). A
-      single phone camera can only sample one site at a time — sequential left-then-right scans are not
-      equivalent to simultaneous bilateral measurement and would misrepresent this capability, so it's
-      intentionally omitted rather than approximated.</div>
-
-    <div class="report-section-title">Disclaimer</div>
-    <div class="hint" id="reportDisclaimer"></div>
-    <div class="hint">This report is generated by a consumer smartphone camera and touchscreen wellness app. It is
-      <b>not a medical device</b>, is <b>not FDA cleared</b>, and does not diagnose any condition. Heart rate
-      is a reasonably well-established camera-PPG measurement; HRV, respiration, LF/HF, and pupillary metrics are
-      rougher estimates with known limitations documented throughout this app. Do not use this report to make
-      medical decisions — consult a licensed clinician for any health concern.</div>
-  </div>
-
-  <footer>
-    How it reads: a fingertip covering the rear camera and flash reflects slightly more or less light with
-    every heartbeat as blood volume changes (green channel, which absorbs more strongly than red and gives a
-    cleaner signal). HR and beat timing come from detecting individual pulse peaks; RMSSD and SDNN come from
-    the variation between beat-to-beat intervals. LF/HF power comes from a full spectral (Welch/FFT) analysis
-    of those intervals, resampled onto a uniform 4 Hz grid via cubic spline. The PLR test tracks relative iris
-    size via on-device face-landmark detection during a brief screen-brightness flash — not clinical
-    pupillometry. History is stored locally in this browser on this device only — not sent anywhere.
-  </footer>
 </div>
 
-<canvas id="proc-canvas" width="40" height="40"></canvas>
-<canvas id="pupil-sample-canvas" width="64" height="64" style="display:none;"></canvas>
-<div class="flash-overlay" id="flashOverlay" style="position:fixed; inset:0; background:white; opacity:0; pointer-events:none; z-index:200;"></div>
+<!-- Permission gate -->
+<div class="panel" id="permission-gate">
+  <p>This needs access to your phone's accelerometer and gyroscope to detect cardiac vibrations transmitted through your chest wall.</p>
+  <button class="btn btn-primary" id="btn-enable-sensors">Enable Motion Sensors</button>
+</div>
+
+<!-- Sensor status -->
+<div class="panel hidden" id="status-panel">
+  <div class="panel-title">Sensor Status</div>
+  <div class="sensor-status">
+    <div class="sensor-row">
+      <div>
+        <span class="status-dot idle" id="dot-accel"></span>
+        <span class="sensor-name">Accelerometer</span>
+        <div class="sensor-detail" id="detail-accel">not started</div>
+      </div>
+      <span class="hz-badge" id="hz-accel">— Hz</span>
+    </div>
+    <div class="sensor-row">
+      <div>
+        <span class="status-dot idle" id="dot-gyro"></span>
+        <span class="sensor-name">Gyroscope</span>
+        <div class="sensor-detail" id="detail-gyro">not started</div>
+      </div>
+      <span class="hz-badge" id="hz-gyro">— Hz</span>
+    </div>
+  </div>
+</div>
+
+<!-- Live waveforms -->
+<div class="panel hidden" id="wave-panel">
+  <div class="panel-title">
+    <span>Linear Acceleration (SCG)</span>
+    <span class="confidence none" id="signal-quality-accel">no signal</span>
+  </div>
+  <div class="wave-wrap">
+    <canvas id="canvas-accel"></canvas>
+  </div>
+  <div class="wave-legend">
+    <span><span class="legend-dot" style="background:var(--accel-color)"></span>chest-normal axis</span>
+    <span><span class="legend-dot" style="background:var(--text-faint)"></span>other axes</span>
+  </div>
+
+  <div class="panel-title" style="margin-top:18px;">
+    <span>Angular Velocity (GCG)</span>
+    <span class="confidence none" id="signal-quality-gyro">no signal</span>
+  </div>
+  <div class="wave-wrap">
+    <canvas id="canvas-gyro"></canvas>
+  </div>
+  <div class="wave-legend">
+    <span><span class="legend-dot" style="background:var(--gyro-color)"></span>dominant rotation axis</span>
+    <span><span class="legend-dot" style="background:var(--text-faint)"></span>other axes</span>
+  </div>
+</div>
+
+<!-- Live metrics -->
+<div class="panel hidden" id="metrics-panel">
+  <div class="panel-title">Live Readout</div>
+  <div class="metric-row">
+    <div class="metric-card">
+      <div class="metric-label">Signal RMS (accel)</div>
+      <div class="metric-value accent" id="metric-rms-accel">—<span class="unit"> m/s²</span></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Signal RMS (gyro)</div>
+      <div class="metric-value gyro-accent" id="metric-rms-gyro">—<span class="unit"> °/s</span></div>
+    </div>
+  </div>
+  <div class="metric-row">
+    <div class="metric-card">
+      <div class="metric-label">Sample Rate</div>
+      <div class="metric-value" id="metric-samplerate">—<span class="unit"> Hz</span></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Session Time</div>
+      <div class="metric-value" id="metric-duration">0:00</div>
+    </div>
+  </div>
+  <div class="hint" id="stillness-hint">
+    Hold still. Beat segmentation and fiducial-point detection (AO/AC timing) come in the next build phase — this stage validates raw signal quality only.
+  </div>
+</div>
+
+<!-- Record control -->
+<div class="panel hidden" id="control-panel">
+  <button class="btn btn-primary" id="btn-record">Start Recording</button>
+</div>
+
+<footer>
+  Experimental wellness tool. Mechanical cardiac vibration signal only —<br>
+  does not measure or reconstruct electrical cardiac activity (ECG).
+</footer>
 
 <script>
-/* ================================================================
-   SECTION 0 — SHARED DSP UTILITIES (unchanged from validated build:
-   tested against synthetic 5-min and 30s NN-interval series with a
-   known 0.25 Hz component; correctly recovered 15 bpm breathing rate
-   and correct LF/HF power ordering in both cases)
-   ================================================================ */
-function nextPow2(n) { let p = 1; while (p < n) p *= 2; return p; }
-function hanningWindow(N) {
-    if (N <= 1) return [1];
-    const w = new Array(N);
-    for (let i = 0; i < N; i++) w[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (N - 1)));
-    return w;
-}
-function fftInPlace(re, im) {
-    const n = re.length;
-    for (let i = 1, j = 0; i < n; i++) {
-        let bit = n >> 1;
-        for (; j & bit; bit >>= 1) j ^= bit;
-        j ^= bit;
-        if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
-    }
-    for (let len = 2; len <= n; len <<= 1) {
-        const ang = -2 * Math.PI / len;
-        const wr0 = Math.cos(ang), wi0 = Math.sin(ang);
-        for (let i = 0; i < n; i += len) {
-            let curWr = 1, curWi = 0;
-            for (let k = 0; k < len / 2; k++) {
-                const uRe = re[i + k], uIm = im[i + k];
-                const vRe = re[i + k + len / 2] * curWr - im[i + k + len / 2] * curWi;
-                const vIm = re[i + k + len / 2] * curWi + im[i + k + len / 2] * curWr;
-                re[i + k] = uRe + vRe; im[i + k] = uIm + vIm;
-                re[i + k + len / 2] = uRe - vRe; im[i + k + len / 2] = uIm - vIm;
-                const nWr = curWr * wr0 - curWi * wi0;
-                const nWi = curWr * wi0 + curWi * wr0;
-                curWr = nWr; curWi = nWi;
-            }
-        }
-    }
-}
-function buildNaturalCubicSpline(xs, ys) {
-    const n = xs.length;
-    if (n < 3) {
-        return function (xq) {
-            if (n === 0) return 0;
-            if (n === 1) return ys[0];
-            const t = (xq - xs[0]) / (xs[1] - xs[0]);
-            const tc = Math.max(0, Math.min(1, t));
-            return ys[0] + tc * (ys[1] - ys[0]);
-        };
-    }
-    const h = new Array(n - 1);
-    for (let i = 0; i < n - 1; i++) h[i] = xs[i + 1] - xs[i];
-    const alpha = new Array(n - 1).fill(0);
-    for (let i = 1; i < n - 1; i++) alpha[i] = (3 / h[i]) * (ys[i + 1] - ys[i]) - (3 / h[i - 1]) * (ys[i] - ys[i - 1]);
-    const l = new Array(n).fill(1), mu = new Array(n).fill(0), z = new Array(n).fill(0);
-    for (let i = 1; i < n - 1; i++) {
-        l[i] = 2 * (xs[i + 1] - xs[i - 1]) - h[i - 1] * mu[i - 1];
-        mu[i] = h[i] / l[i];
-        z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i];
-    }
-    const c = new Array(n).fill(0), b = new Array(n).fill(0), d = new Array(n).fill(0);
-    for (let j = n - 2; j >= 0; j--) {
-        c[j] = z[j] - mu[j] * c[j + 1];
-        b[j] = (ys[j + 1] - ys[j]) / h[j] - h[j] * (c[j + 1] + 2 * c[j]) / 3;
-        d[j] = (c[j + 1] - c[j]) / (3 * h[j]);
-    }
-    return function (xq) {
-        let xc = xq;
-        if (xc < xs[0]) xc = xs[0];
-        if (xc > xs[n - 1]) xc = xs[n - 1];
-        let lo = 0, hi = n - 2;
-        while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (xs[mid] <= xc) lo = mid; else hi = mid - 1; }
-        const i = lo, dx = xc - xs[i];
-        return ys[i] + b[i] * dx + c[i] * dx * dx + d[i] * dx * dx * dx;
-    };
-}
-function resampleToUniformRate(xsSec, ys, fsTarget) {
-    const n = xsSec.length;
-    const meanT = xsSec.reduce((a, b) => a + b, 0) / n;
-    const meanV = ys.reduce((a, b) => a + b, 0) / n;
-    let num = 0, den = 0;
-    for (let i = 0; i < n; i++) { num += (xsSec[i] - meanT) * (ys[i] - meanV); den += (xsSec[i] - meanT) ** 2; }
-    const slope = den > 0 ? num / den : 0;
-    const intercept = meanV - slope * meanT;
-    const detrended = ys.map((v, i) => v - (intercept + slope * xsSec[i]));
-    const spline = buildNaturalCubicSpline(xsSec, detrended);
-    const duration = xsSec[n - 1] - xsSec[0];
-    const numSamples = Math.max(0, Math.floor(duration * fsTarget) + 1);
-    const uniform = new Array(numSamples);
-    for (let k = 0; k < numSamples; k++) uniform[k] = spline(xsSec[0] + k / fsTarget);
-    return { uniform, fs: fsTarget, duration };
-}
-function resampleToUniform4Hz(beatTimesSec, nnValuesMs) { return resampleToUniformRate(beatTimesSec, nnValuesMs, 4); }
-function computeWelchPSD(signal, fs) {
-    const N = signal.length;
-    if (N < 8) return null;
-    let segLen = Math.min(N, 128);
-    segLen = Math.max(segLen, Math.min(N, 16));
-    const overlapFrac = 0.5;
-    const hop = Math.max(1, Math.floor(segLen * (1 - overlapFrac)));
-    const nfft = nextPow2(Math.max(segLen, 256));
-    const window = hanningWindow(segLen);
-    let winPower = 0; for (const w of window) winPower += w * w;
-    const halfN = nfft / 2;
-    const psdAccum = new Array(halfN + 1).fill(0);
-    let segCount = 0;
-    for (let start = 0; start + segLen <= N; start += hop) {
-        const re = new Float64Array(nfft), im = new Float64Array(nfft);
-        for (let i = 0; i < segLen; i++) re[i] = signal[start + i] * window[i];
-        fftInPlace(re, im);
-        for (let k = 0; k <= halfN; k++) psdAccum[k] += (re[k] * re[k] + im[k] * im[k]) / (fs * winPower);
-        segCount++;
-    }
-    if (segCount === 0) {
-        const win2 = hanningWindow(N);
-        let wp2 = 0; for (const w of win2) wp2 += w * w;
-        const re = new Float64Array(nfft), im = new Float64Array(nfft);
-        for (let i = 0; i < N; i++) re[i] = signal[i] * win2[i];
-        fftInPlace(re, im);
-        for (let k = 0; k <= halfN; k++) psdAccum[k] = (re[k] * re[k] + im[k] * im[k]) / (fs * wp2);
-        segCount = 1;
-    }
-    const freqs = new Array(halfN + 1), psd = new Array(halfN + 1);
-    for (let k = 0; k <= halfN; k++) {
-        freqs[k] = k * fs / nfft;
-        let val = psdAccum[k] / segCount;
-        if (k !== 0 && k !== halfN) val *= 2;
-        psd[k] = val;
-    }
-    return { freqs, psd, segCount, segLen, nfft };
-}
-function bandPower(freqs, psd, fLow, fHigh) {
-    let power = 0;
-    for (let k = 1; k < freqs.length; k++) {
-        const f0 = freqs[k - 1], f1 = freqs[k];
-        if (f1 < fLow || f0 > fHigh) continue;
-        const a = Math.max(f0, fLow), b = Math.min(f1, fHigh);
-        if (b <= a) continue;
-        const p0 = psd[k - 1] + (psd[k] - psd[k - 1]) * (a - f0) / (f1 - f0);
-        const p1 = psd[k - 1] + (psd[k] - psd[k - 1]) * (b - f0) / (f1 - f0);
-        power += (b - a) * (p0 + p1) / 2;
-    }
-    return power;
-}
+(function () {
+  'use strict';
 
-/* ================================================================
-   SECTION 1 — STATE, DOM REFS, LOCALSTORAGE HISTORY
-   ================================================================ */
-const HISTORY_KEY = 'autonomic_vitality_history_v1';
-let scanMode = 'fixed30';
-let running = false;
-let mediaStream = null, rafId = null;
-let scanStartTime = 0;
-let secondsRemaining = 30, elapsedSec = 0;
-let scanTimerInterval = null, liveAnalysisTimer = null, autoStopTimer = null;
+  // ---------- State ----------
+  const state = {
+    placement: 'lying',
+    accelSupported: false,
+    gyroSupported: false,
+    accelActive: false,
+    gyroActive: false,
+    recording: false,
+    recordStart: null,
+    accelBuffer: [], // {t, x, y, z}
+    gyroBuffer: [],  // {t, x, y, z}
+    accelSampleTimes: [],
+    gyroSampleTimes: [],
+    accelHz: 0,
+    gyroHz: 0,
+  };
 
-const CONTINUOUS_AUTO_STOP_MS = 10 * 60 * 1000;
-const MIN_PEAK_GAP_MS = 320;
-const PROMINENCE_FRACTION = 0.35;
-const PROMINENCE_WINDOW_N = 45; // ~1.5s at ~30fps
+  const BUFFER_SECONDS = 8; // rolling display window
 
-let times = [];       // ms since scan start, per processed frame
-let filtered = [];    // EMA-baseline-removed, lightly smoothed AC signal
-let dcBaseline = null;
-let smoothBuf = [];
-let rising = false;
-let peaks = [];        // ms timestamps of detected beats
-let correctedIntervals = [];
-let missedBeatCount = 0, pauseCount = 0, doubleDetectionCount = 0, rawIntervalCount = 0;
-const PAUSE_MS = 5000, PAUSE_RATIO = 6, MIN_PLAUSIBLE_MS = 400;
-const PLAUSIBLE_MIN_BPM = 30, PLAUSIBLE_MAX_BPM = 200;
+  // ---------- DOM refs ----------
+  const el = (id) => document.getElementById(id);
+  const permissionGate = el('permission-gate');
+  const statusPanel = el('status-panel');
+  const wavePanel = el('wave-panel');
+  const metricsPanel = el('metrics-panel');
+  const controlPanel = el('control-panel');
 
-let finalTimeResult = null, finalFreqResult = null;
+  const canvasAccel = el('canvas-accel');
+  const canvasGyro = el('canvas-gyro');
+  const ctxAccel = canvasAccel.getContext('2d');
+  const ctxGyro = canvasGyro.getContext('2d');
 
-const video = document.getElementById('webcam-stream');
-const procCanvas = document.getElementById('proc-canvas');
-const pctx = procCanvas.getContext('2d', { willReadFrequently: true });
-const waveformCanvas = document.getElementById('waveformCanvas');
-const mainBtn = document.getElementById('mainBtn');
-const mode30Btn = document.getElementById('mode30s');
-const modeContBtn = document.getElementById('modeCont');
-const scanStatusText = document.getElementById('scanStatusText');
-const scanTimerEl = document.getElementById('scanTimer');
-const ampReadout = document.getElementById('ampReadout');
-const ampStatus = document.getElementById('ampStatus');
-const bpmNumber = document.getElementById('bpmNumber');
-const hrConfidence = document.getElementById('hrConfidence');
-const rmssdVal = document.getElementById('rmssdVal');
-const sdnnVal = document.getElementById('sdnnVal');
-const rrVal = document.getElementById('rrVal');
-const qualityHint = document.getElementById('qualityHint');
-const freqPanel = document.getElementById('freqPanel');
-const freqConfidence = document.getElementById('freqConfidence');
-const spectrumCanvas = document.getElementById('spectrum-canvas');
-const historyBody = document.getElementById('historyBody');
+  function resizeCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 
-/* ================================================================
-   SECTION 2 — MODE SELECTION & MAIN CONTROL
-   ================================================================ */
-function selectMode(mode) {
-    if (running) return;
-    scanMode = mode;
-    mode30Btn.classList.toggle('active', mode === 'fixed30');
-    modeContBtn.classList.toggle('active', mode === 'continuous');
-    mainBtn.textContent = mode === 'fixed30' ? 'Start 30-Second Scan' : 'Start Continuous Capture';
-}
-mode30Btn.addEventListener('click', () => selectMode('fixed30'));
-modeContBtn.addEventListener('click', () => selectMode('continuous'));
+  function resizeAllCanvases() {
+    resizeCanvas(canvasAccel);
+    resizeCanvas(canvasGyro);
+  }
+  window.addEventListener('resize', resizeAllCanvases);
 
-mainBtn.addEventListener('click', () => { if (!running) startCapture(); else stopCapture(); });
+  // ---------- Placement toggle ----------
+  const placementHints = {
+    lying: "Lie down, place the phone screen-up directly over the lower sternum (breastbone), and hold still. This orientation gives the most stable signal and matches most published SCG methodology.",
+    held: "Hold the phone flat against your chest over the sternum, screen facing your body, elbow supported if possible to minimize hand tremor. Expect a noisier signal than lying flat — postural muscle tone and hand micro-motion add noise the lying position avoids."
+  };
 
-async function startCapture() {
-    try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: "environment" }, width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 30, min: 24 } },
-            audio: false
+  el('btn-lying').addEventListener('click', () => setPlacement('lying'));
+  el('btn-held').addEventListener('click', () => setPlacement('held'));
+
+  function setPlacement(p) {
+    state.placement = p;
+    el('btn-lying').classList.toggle('active', p === 'lying');
+    el('btn-held').classList.toggle('active', p === 'held');
+    el('placement-hint').textContent = placementHints[p];
+  }
+
+  // ---------- Sensor acquisition ----------
+  // Strategy: try the Generic Sensor API (Accelerometer/Gyroscope) first —
+  // higher precision, explicit sample-rate control, separates true linear
+  // acceleration from gravity better on supporting browsers (Android Chrome).
+  // Fall back to DeviceMotionEvent/DeviceOrientationEvent for iOS Safari and
+  // browsers without Generic Sensor API support.
+
+  let genericAccelSensor = null;
+  let genericGyroSensor = null;
+  let usingGenericAccel = false;
+  let usingGenericGyro = false;
+
+  function nowMs() { return performance.now(); }
+
+  function pushSample(buffer, timesArr, sample) {
+    buffer.push(sample);
+    timesArr.push(sample.t);
+    const cutoff = sample.t - BUFFER_SECONDS * 1000;
+    while (buffer.length && buffer[0].t < cutoff) {
+      buffer.shift();
+    }
+    while (timesArr.length && timesArr[0] < cutoff) {
+      timesArr.shift();
+    }
+  }
+
+  function updateHzEstimate(timesArr) {
+    if (timesArr.length < 2) return 0;
+    const span = (timesArr[timesArr.length - 1] - timesArr[0]) / 1000;
+    if (span <= 0) return 0;
+    return (timesArr.length - 1) / span;
+  }
+
+  function onAccelSample(x, y, z) {
+    const t = nowMs();
+    pushSample(state.accelBuffer, state.accelSampleTimes, { t, x, y, z });
+    state.accelHz = updateHzEstimate(state.accelSampleTimes);
+    if (!state.accelActive) {
+      state.accelActive = true;
+      setDotStatus('dot-accel', 'ok');
+      el('detail-accel').textContent = usingGenericAccel ? 'Generic Sensor API' : 'DeviceMotion (fallback)';
+    }
+  }
+
+  function onGyroSample(x, y, z) {
+    const t = nowMs();
+    pushSample(state.gyroBuffer, state.gyroSampleTimes, { t, x, y, z });
+    state.gyroHz = updateHzEstimate(state.gyroSampleTimes);
+    if (!state.gyroActive) {
+      state.gyroActive = true;
+      setDotStatus('dot-gyro', 'ok');
+      el('detail-gyro').textContent = usingGenericGyro ? 'Generic Sensor API' : 'DeviceMotion rotationRate (fallback)';
+    }
+  }
+
+  function setDotStatus(id, cls) {
+    const dot = el(id);
+    dot.className = 'status-dot ' + cls;
+  }
+
+  async function startGenericSensors() {
+    let accelOk = false, gyroOk = false;
+
+    if ('Accelerometer' in window) {
+      try {
+        // linear acceleration excludes gravity where supported; fall back to Accelerometer otherwise
+        const SensorClass = ('LinearAccelerationSensor' in window) ? window.LinearAccelerationSensor : window.Accelerometer;
+        genericAccelSensor = new SensorClass({ frequency: 100 });
+        genericAccelSensor.addEventListener('reading', () => {
+          onAccelSample(genericAccelSensor.x, genericAccelSensor.y, genericAccelSensor.z);
         });
-        video.srcObject = mediaStream;
-        await video.play();
-        let torchOn = false;
-        try {
-            const track = mediaStream.getVideoTracks()[0];
-            const caps = track.getCapabilities ? track.getCapabilities() : {};
-            if (caps.torch) { await track.applyConstraints({ advanced: [{ torch: true }] }); torchOn = true; }
-        } catch (e) { /* torch optional */ }
-        beginScan(torchOn);
-    } catch (err) {
-        alert("Camera access denied or unavailable. This scan needs camera permission to read pulse signal.");
-    }
-}
-
-function beginScan(torchOn) {
-    running = true;
-    scanStartTime = performance.now();
-    times = []; filtered = []; dcBaseline = null; smoothBuf = []; rising = false;
-    peaks = []; correctedIntervals = []; beatShapes = []; breathMarkers = []; breathPhase = 'inhale';
-    missedBeatCount = 0; pauseCount = 0; doubleDetectionCount = 0; rawIntervalCount = 0;
-    finalTimeResult = null; finalFreqResult = null;
-
-    mode30Btn.disabled = true; modeContBtn.disabled = true;
-    mainBtn.textContent = 'Stop'; mainBtn.classList.add('stop');
-    scanStatusText.textContent = 'Live';
-    freqPanel.style.display = 'none';
-    bpmNumber.textContent = '—'; bpmNumber.classList.add('dim');
-    hrConfidence.textContent = 'acquiring...'; hrConfidence.className = 'confidence';
-    ampStatus.textContent = torchOn ? 'torch on' : 'torch unavailable — use bright ambient light';
-    breathMarkBtn.style.display = 'block'; breathMarkBtn.textContent = 'Mark: inhale starting';
-
-    if (scanMode === 'fixed30') {
-        secondsRemaining = 30;
-        scanTimerEl.textContent = secondsRemaining + 's';
-        scanTimerInterval = setInterval(() => {
-            secondsRemaining--;
-            scanTimerEl.textContent = secondsRemaining + 's';
-            updateLiveTelemetry();
-            if (secondsRemaining <= 0) stopCapture();
-        }, 1000);
-    } else {
-        elapsedSec = 0;
-        scanTimerEl.textContent = '0:00';
-        scanTimerInterval = setInterval(() => {
-            elapsedSec++;
-            const mm = Math.floor(elapsedSec / 60), ss = elapsedSec % 60;
-            scanTimerEl.textContent = mm + ':' + String(ss).padStart(2, '0');
-            updateLiveTelemetry();
-        }, 1000);
-        autoStopTimer = setTimeout(() => stopCapture(), CONTINUOUS_AUTO_STOP_MS);
-    }
-
-    liveAnalysisTimer = setInterval(() => {
-        const r = runFrequencyAnalysis();
-        if (r) renderFrequencyResult(r, true);
-    }, 5000);
-
-    requestAnimationFrame(loop);
-}
-
-function stopCapture() {
-    running = false;
-    clearInterval(scanTimerInterval); clearInterval(liveAnalysisTimer); clearTimeout(autoStopTimer);
-    if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
-
-    mode30Btn.disabled = false; modeContBtn.disabled = false;
-    mainBtn.textContent = scanMode === 'fixed30' ? 'Start 30-Second Scan' : 'Start Continuous Capture';
-    mainBtn.classList.remove('stop');
-    scanStatusText.textContent = 'Ready';
-    scanTimerEl.textContent = '';
-    breathMarkBtn.style.display = 'none';
-
-    finalTimeResult = computeTimeDomainHRV();
-    finalFreqResult = runFrequencyAnalysis();
-    renderFinalResults();
-    if (finalFreqResult) { freqPanel.style.display = 'block'; renderFrequencyResult(finalFreqResult, false); }
-    renderAutonomicReport();
-    saveHistoryEntry();
-}
-
-/* ================================================================
-   SECTION 3 — FRAME SAMPLING (green channel, EMA baseline,
-   slope + local-range-prominence peak detection). Ported from a
-   working prior implementation (BeatPrint) rather than reinvented,
-   since green-channel PPG + EMA baseline + prominence-gated slope
-   detection is a proven, robust combination.
-   ================================================================ */
-function loop() {
-    if (!running) return;
-    processFrame();
-    rafId = requestAnimationFrame(loop);
-}
-
-function processFrame() {
-    if (video.readyState < 2) return;
-    pctx.drawImage(video, 0, 0, procCanvas.width, procCanvas.height);
-    const frame = pctx.getImageData(0, 0, procCanvas.width, procCanvas.height).data;
-    let sum = 0, n = 0;
-    for (let i = 0; i < frame.length; i += 4) { sum += frame[i + 1]; n++; } // green channel
-    const g = sum / n;
-    const now = performance.now() - scanStartTime;
-    times.push(now);
-
-    if (dcBaseline === null) dcBaseline = g;
-    dcBaseline = dcBaseline * 0.97 + g * 0.03; // ~1-2s EMA time constant at ~30fps
-    const acRaw = g - dcBaseline;
-
-    smoothBuf.push(acRaw);
-    if (smoothBuf.length > 2) smoothBuf.shift();
-    const ac = smoothBuf.reduce((a, b) => a + b, 0) / smoothBuf.length;
-    filtered.push(ac);
-
-    const MAXLEN = 30 * 20; // keep ~20s for display; peaks/intervals persist separately
-    if (times.length > MAXLEN) { times.shift(); filtered.shift(); }
-
-    detectPeak(ac, now);
-    drawWaveform();
-}
-
-function detectPeak(ac, now) {
-    if (filtered.length < 8) return;
-    const prev = filtered[filtered.length - 2];
-    const wasRising = rising;
-    rising = ac > prev;
-
-    const sinceLastPeak = peaks.length ? now - peaks[peaks.length - 1] : 9999;
-    const recentWindow = filtered.slice(-Math.min(filtered.length, PROMINENCE_WINDOW_N));
-    const localMin = Math.min(...recentWindow), localMax = Math.max(...recentWindow);
-    const localRange = (localMax - localMin) || 0.001;
-    const prominence = ac - localMin;
-    const isProminent = prominence > localRange * PROMINENCE_FRACTION;
-
-    if (wasRising && !rising && sinceLastPeak > MIN_PEAK_GAP_MS && isProminent) {
-        const prevPeakTime = peaks.length ? peaks[peaks.length - 1] : null;
-        peaks.push(now);
-        if (prevPeakTime !== null) { recordInterval(now - prevPeakTime); captureBeatShape(prevPeakTime, now); }
-    }
-}
-
-// Captures one full beat-cycle of the (unsmoothed-for-display) filtered AC
-// signal between two consecutive peaks, resampled to a fixed point count so
-// beats of slightly different raw sample-density (frame rate isn't perfectly
-// constant) can still be pointwise-averaged together later. Captured
-// incrementally as each peak fires — the live display buffers get trimmed
-// to ~20s for performance, so this is the only way to retain beat shapes
-// from earlier in a long continuous-mode session.
-const BEAT_SHAPE_POINTS = 40;
-const MAX_STORED_BEAT_SHAPES = 40;
-let beatShapes = [];
-
-// Manual breath-phase markers: the user taps the button each time they
-// notice their own breath switching direction. Purely self-reported timing
-// (not detected from the signal), stored as {t, phase} and drawn on the
-// waveform so waveform-shape changes can be visually cross-checked against
-// self-noted breath phase without reconstructing timing after the fact.
-let breathMarkers = [];
-let breathPhase = 'inhale';
-const breathMarkBtn = document.getElementById('breathMarkBtn');
-breathMarkBtn.addEventListener('click', () => {
-    if (!running) return;
-    breathMarkers.push({ t: performance.now() - scanStartTime, phase: breathPhase });
-    breathPhase = breathPhase === 'inhale' ? 'exhale' : 'inhale';
-    breathMarkBtn.textContent = 'Mark: ' + breathPhase + ' starting';
-});
-
-function captureBeatShape(prevPeakTime, currPeakTime) {
-    const startIdx = times.findIndex(t => Math.abs(t - prevPeakTime) < 5);
-    const endIdx = times.findIndex(t => Math.abs(t - currPeakTime) < 5);
-    if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) return;
-    const segment = filtered.slice(startIdx, endIdx + 1);
-    if (segment.length < 4) return;
-    const resampled = new Array(BEAT_SHAPE_POINTS);
-    for (let i = 0; i < BEAT_SHAPE_POINTS; i++) {
-        const pos = (i / (BEAT_SHAPE_POINTS - 1)) * (segment.length - 1);
-        const lo = Math.floor(pos), hi = Math.min(segment.length - 1, lo + 1);
-        const frac = pos - lo;
-        resampled[i] = segment[lo] * (1 - frac) + segment[hi] * frac;
-    }
-    const mn = Math.min(...resampled), mx = Math.max(...resampled);
-    const range = (mx - mn) || 1;
-    beatShapes.push(resampled.map(v => (v - mn) / range)); // normalized 0-1, shape only — amplitude isn't clinically meaningful with this camera setup
-    if (beatShapes.length > MAX_STORED_BEAT_SHAPES) beatShapes.shift();
-}
-
-// Classifies each beat-to-beat gap as normal / double-detection / likely
-// missed-beats (split & reconstructed) / pause (excluded) — see BeatPrint's
-// source for the full rationale. Improves RMSSD/SDNN robustness a lot over
-// using raw intervals unfiltered.
-function recordInterval(interval) {
-    rawIntervalCount++;
-    if (interval < MIN_PLAUSIBLE_MS) { doubleDetectionCount++; return; }
-    const recent = correctedIntervals.slice(-8);
-    if (recent.length >= 3) {
-        const sorted = [...recent].sort((a, b) => a - b);
-        const localMedian = sorted[Math.floor(sorted.length / 2)];
-        if (localMedian > 0) {
-            const ratio = interval / localMedian;
-            if (interval > PAUSE_MS || ratio > PAUSE_RATIO) { pauseCount++; return; }
-            if (ratio > 1.6) {
-                const nSplit = Math.max(2, Math.round(ratio));
-                missedBeatCount += (nSplit - 1);
-                for (let k = 0; k < nSplit; k++) correctedIntervals.push(interval / nSplit);
-                return;
-            }
-        }
-    }
-    correctedIntervals.push(interval);
-}
-
-function smoothForDisplay(values, windowSize) {
-    const half = Math.floor(windowSize / 2);
-    return values.map((v, i) => {
-        const start = Math.max(0, i - half), end = Math.min(values.length, i + half + 1);
-        const slice = values.slice(start, end);
-        return slice.reduce((a, b) => a + b, 0) / slice.length;
-    });
-}
-
-function drawWaveform() {
-    const c = waveformCanvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = waveformCanvas.clientWidth || 300, cssH = waveformCanvas.clientHeight || 110;
-    waveformCanvas.width = cssW * dpr; waveformCanvas.height = cssH * dpr;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, cssW, cssH);
-    if (filtered.length < 4) return;
-
-    const axisH = 14; // reserved strip at the bottom for mm:ss time labels
-    const chartH = cssH - axisH;
-
-    const windowN = Math.min(filtered.length, 30 * 8); // ~8s window
-    const visVals = filtered.slice(-windowN); // unchanged raw signal — drives amplitude/quality readout & peak detection elsewhere
-    const visTimes = times.slice(-windowN);
-    const mn = Math.min(...visVals), mx = Math.max(...visVals);
-
-    const ampEstimate = mx - mn;
-    ampReadout.textContent = ampEstimate.toFixed(2);
-    if (running) {
-        if (ampEstimate < 0.4) { ampStatus.textContent = 'weak / no pulse detected'; ampStatus.className = 'low'; }
-        else { ampStatus.textContent = 'pulse detected'; ampStatus.className = 'ok'; }
-    }
-
-    // Display-only smoothing: a separate copy purely for the plotted line.
-    // Peak detection (detectPeak) and the amplitude/quality readout above
-    // both use the original `filtered`/visVals data untouched — only what
-    // gets drawn on screen is smoothed.
-    const displayVals = smoothForDisplay(visVals, 5);
-    const dmn = Math.min(...displayVals), dmx = Math.max(...displayVals);
-    const drange = (dmx - dmn) || 1;
-    const midY = chartH / 2, usable = chartH * 0.42;
-    const xPix = i => (i / (windowN - 1)) * cssW;
-
-    // Time axis: absolute session-elapsed mm:ss (not just position within
-    // this scrolling window), so timestamps stay comparable across multiple
-    // screenshots taken later in a long continuous-mode recording.
-    if (visTimes.length > 1) {
-        const t0 = visTimes[0], t1 = visTimes[visTimes.length - 1];
-        const span = t1 - t0;
-        const step = span > 6000 ? 2000 : 1000; // 2s ticks if window is long, else 1s
-        c.strokeStyle = '#22352E'; c.fillStyle = '#7C948C'; c.font = '9px monospace'; c.textAlign = 'center';
-        for (let tick = Math.ceil(t0 / step) * step; tick <= t1; tick += step) {
-            const frac = (tick - t0) / span;
-            const x = frac * cssW;
-            c.beginPath(); c.moveTo(x, chartH); c.lineTo(x, chartH + 3); c.stroke();
-            const totalSec = Math.round(tick / 1000);
-            const mm = Math.floor(totalSec / 60), ss = totalSec % 60;
-            c.fillText(mm + ':' + String(ss).padStart(2, '0'), x, cssH - 2);
-        }
-    }
-
-    c.beginPath(); c.lineWidth = 2; c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--trace').trim();
-    for (let i = 0; i < displayVals.length; i++) {
-        const x = xPix(i);
-        let norm = ((displayVals[i] - dmn) / drange - 0.5) * 2;
-        norm = Math.max(-1.3, Math.min(1.3, norm));
-        const y = midY - norm * usable;
-        if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
-    }
-    c.stroke();
-
-    c.fillStyle = '#F0B429';
-    peaks.forEach(pt => {
-        const idx = visTimes.findIndex(t => Math.abs(t - pt) < 20);
-        if (idx > -1) { c.beginPath(); c.arc(xPix(idx), 8, 2.5, 0, Math.PI * 2); c.fill(); }
-    });
-
-    // Self-reported breath-phase markers (see breathMarkBtn) — purely
-    // manual timing, not detected from the signal.
-    if (visTimes.length > 1) {
-        const t0 = visTimes[0], t1 = visTimes[visTimes.length - 1], span = (t1 - t0) || 1;
-        breathMarkers.forEach(m => {
-            if (m.t < t0 || m.t > t1) return;
-            const x = ((m.t - t0) / span) * cssW;
-            c.strokeStyle = m.phase === 'inhale' ? '#5DCAA5' : '#EF9F27';
-            c.lineWidth = 1; c.setLineDash([3, 2]);
-            c.beginPath(); c.moveTo(x, 0); c.lineTo(x, chartH); c.stroke();
-            c.setLineDash([]);
+        genericAccelSensor.addEventListener('error', (e) => {
+          console.warn('Accelerometer sensor error', e.error);
+          el('detail-accel').textContent = 'error: ' + (e.error ? e.error.message : 'unknown');
+          setDotStatus('dot-accel', 'err');
         });
+        genericAccelSensor.start();
+        usingGenericAccel = true;
+        accelOk = true;
+      } catch (err) {
+        console.warn('Generic Accelerometer unavailable, will fall back', err);
+      }
     }
-}
 
-/* ================================================================
-   SECTION 4 — LIVE / FINAL TELEMETRY
-   ================================================================ */
-function updateLiveTelemetry() {
-    const recentPeaks = peaks.slice(-6);
-    if (recentPeaks.length >= 2) {
-        const intervals = [];
-        for (let i = 1; i < recentPeaks.length; i++) intervals.push(recentPeaks[i] - recentPeaks[i - 1]);
-        const avgIbi = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-        const bpm = Math.round(60000 / avgIbi);
-        if (bpm >= PLAUSIBLE_MIN_BPM && bpm <= PLAUSIBLE_MAX_BPM) {
-            bpmNumber.textContent = bpm; bpmNumber.classList.remove('dim');
+    if ('Gyroscope' in window) {
+      try {
+        genericGyroSensor = new window.Gyroscope({ frequency: 100 });
+        genericGyroSensor.addEventListener('reading', () => {
+          // rad/s -> deg/s for readability
+          const RAD2DEG = 180 / Math.PI;
+          onGyroSample(genericGyroSensor.x * RAD2DEG, genericGyroSensor.y * RAD2DEG, genericGyroSensor.z * RAD2DEG);
+        });
+        genericGyroSensor.addEventListener('error', (e) => {
+          console.warn('Gyroscope sensor error', e.error);
+          el('detail-gyro').textContent = 'error: ' + (e.error ? e.error.message : 'unknown');
+          setDotStatus('dot-gyro', 'err');
+        });
+        genericGyroSensor.start();
+        usingGenericGyro = true;
+        gyroOk = true;
+      } catch (err) {
+        console.warn('Generic Gyroscope unavailable, will fall back', err);
+      }
+    }
+
+    return { accelOk, gyroOk };
+  }
+
+  function startDeviceMotionFallback(needAccel, needGyro) {
+    if (!needAccel && !needGyro) return;
+
+    window.addEventListener('devicemotion', (e) => {
+      if (needAccel) {
+        // Prefer gravity-excluded acceleration when available; fall back to includingGravity
+        const a = e.acceleration && (e.acceleration.x !== null) ? e.acceleration : e.accelerationIncludingGravity;
+        if (a && a.x !== null && a.x !== undefined) {
+          onAccelSample(a.x, a.y, a.z);
         }
-    }
-    const n = correctedIntervals.length;
-    const conf = n >= 40 ? 'high' : n >= 15 ? 'medium' : 'low';
-    hrConfidence.textContent = n === 0 ? 'acquiring...' : conf + ' confidence (' + peaks.length + ' beats)';
-    hrConfidence.className = 'confidence ' + (n === 0 ? '' : conf);
-}
-
-function computeTimeDomainHRV() {
-    if (correctedIntervals.length < 3) return null;
-    const intervals = correctedIntervals;
-    let sumSqSuccessive = 0;
-    for (let i = 1; i < intervals.length; i++) { const d = intervals[i] - intervals[i - 1]; sumSqSuccessive += d * d; }
-    const rmssd = intervals.length > 1 ? Math.sqrt(sumSqSuccessive / (intervals.length - 1)) : null;
-    const meanIbi = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-    let sdnn = null;
-    if (intervals.length > 1) {
-        const variance = intervals.reduce((a, b) => a + (b - meanIbi) * (b - meanIbi), 0) / (intervals.length - 1);
-        sdnn = Math.sqrt(variance);
-    }
-    const n = intervals.length;
-    const confidence = n >= 40 ? 'high' : n >= 15 ? 'medium' : 'low';
-    return { rmssd: rmssd !== null ? Math.round(rmssd) : null, sdnn: sdnn !== null ? Math.round(sdnn) : null,
-        avgBpm: Math.round(60000 / meanIbi), beatCount: peaks.length, correctedCount: n, confidence };
-}
-
-function renderFinalResults() {
-    if (!finalTimeResult) {
-        bpmNumber.textContent = '—'; bpmNumber.classList.add('dim');
-        hrConfidence.textContent = 'no reading'; hrConfidence.className = 'confidence low';
-        rmssdVal.textContent = '—'; sdnnVal.textContent = '—'; rrVal.textContent = '—';
-        qualityHint.innerHTML = `<b>No pulse detected.</b> Press your fingertip firmly over both the camera lens
-            and the flash, avoid gaps where light leaks in, keep the phone still. If your device doesn't
-            support browser flash control (common on iPhone/Safari), try a well-lit room instead.`;
-        return;
-    }
-    bpmNumber.textContent = finalTimeResult.avgBpm; bpmNumber.classList.remove('dim');
-    hrConfidence.textContent = finalTimeResult.confidence + ' confidence (' + finalTimeResult.beatCount + ' beats)';
-    hrConfidence.className = 'confidence ' + finalTimeResult.confidence;
-    rmssdVal.textContent = finalTimeResult.rmssd !== null ? finalTimeResult.rmssd : '—';
-    sdnnVal.textContent = finalTimeResult.sdnn !== null ? finalTimeResult.sdnn : '—';
-    document.getElementById('rmssdVal').classList.remove('dim');
-    document.getElementById('sdnnVal').classList.remove('dim');
-    rrVal.textContent = finalFreqResult && finalFreqResult.breathingBpm ? finalFreqResult.breathingBpm : '—';
-
-    let hintHtml = `${finalTimeResult.beatCount} beats detected, ${finalTimeResult.correctedCount} used after correction.`;
-    if (missedBeatCount > 0) hintHtml += ` ${missedBeatCount} beat-to-beat gap(s) were flagged as likely missed detections and reconstructed.`;
-    if (pauseCount > 0) hintHtml += ` ${pauseCount} gap(s) looked like a contact interruption and were excluded.`;
-    if (doubleDetectionCount > 0) hintHtml += ` ${doubleDetectionCount} implausibly-close detection(s) were merged.`;
-    qualityHint.innerHTML = hintHtml;
-}
-
-/* ================================================================
-   SECTION 6 — FREQUENCY-DOMAIN HRV
-   ================================================================ */
-function runFrequencyAnalysis() {
-    if (peaks.length < 5) return null;
-    const beatTimesSec = [], nnMs = [];
-    for (let i = 1; i < peaks.length; i++) { nnMs.push(peaks[i] - peaks[i - 1]); beatTimesSec.push(peaks[i] / 1000); }
-    const idx = [];
-    for (let i = 0; i < nnMs.length; i++) if (nnMs[i] >= 300 && nnMs[i] <= 2000) idx.push(i);
-    if (idx.length < 5) return null;
-    const cleanNN = idx.map(i => nnMs[i]), cleanT = idx.map(i => beatTimesSec[i]);
-    const { uniform, fs, duration } = resampleToUniform4Hz(cleanT, cleanNN);
-    if (uniform.length < 8) return null;
-    const welch = computeWelchPSD(uniform, fs);
-    if (!welch) return null;
-    const lf = bandPower(welch.freqs, welch.psd, 0.04, 0.15);
-    const hf = bandPower(welch.freqs, welch.psd, 0.15, 0.40);
-    const vlf = duration >= 180 ? bandPower(welch.freqs, welch.psd, 0.003, 0.04) : null;
-    const totalForNu = lf + hf;
-    const totalPower = lf + hf + (vlf !== null ? vlf : 0);
-    const lfHfRatio = hf > 0.0001 ? lf / hf : null;
-    const lfNu = totalForNu > 0 ? (lf / totalForNu * 100) : null;
-    const hfNu = totalForNu > 0 ? (hf / totalForNu * 100) : null;
-    let peakIdx = -1, peakVal = -Infinity;
-    for (let k = 0; k < welch.freqs.length; k++) if (welch.freqs[k] >= 0.15 && welch.freqs[k] <= 0.40 && welch.psd[k] > peakVal) { peakVal = welch.psd[k]; peakIdx = k; }
-    const breathingHz = peakIdx >= 0 ? welch.freqs[peakIdx] : null;
-    const breathingBpm = breathingHz ? Math.round(breathingHz * 60) : null;
-    let confidenceTier, confidenceLabel;
-    if (duration < 60) { confidenceTier = 'low'; confidenceLabel = 'ultra-short (<60s)'; }
-    else if (duration < 120) { confidenceTier = 'low'; confidenceLabel = 'short (60-120s)'; }
-    else if (duration < 300) { confidenceTier = 'medium'; confidenceLabel = 'below 5-min standard'; }
-    else { confidenceTier = 'high'; confidenceLabel = 'standard window'; }
-    return { freqs: welch.freqs, psd: welch.psd, lf, hf, vlf, totalPower, lfHfRatio, lfNu, hfNu, breathingHz, breathingBpm, durationSec: duration, confidenceTier, confidenceLabel };
-}
-
-function renderFrequencyResult(r, isLive) {
-    freqPanel.style.display = 'block';
-    drawSpectrumChart(spectrumCanvas, r.freqs, r.psd);
-    freqConfidence.className = 'confidence ' + r.confidenceTier;
-    freqConfidence.textContent = r.confidenceLabel + (isLive ? ' · live' : ' · final');
-    document.getElementById('lfVal').textContent = r.lf.toFixed(1);
-    document.getElementById('hfVal').textContent = r.hf.toFixed(1);
-    document.getElementById('vlfVal').textContent = r.vlf !== null ? r.vlf.toFixed(1) : 'N/A';
-    document.getElementById('tpVal').textContent = r.totalPower.toFixed(1);
-    document.getElementById('lfhfVal').textContent = r.lfHfRatio !== null ? r.lfHfRatio.toFixed(2) : '--';
-    const tpHint = document.getElementById('tpHint');
-    if (r.totalPower < 100) {
-        tpHint.innerHTML = `<b>Total power is quite low</b> in this window — treat the LF/HF ratio above with
-            extra caution, since a ratio computed on very little overall power is more easily skewed by noise
-            than a real autonomic pattern. Consider a longer or cleaner-signal scan.`;
-    } else {
-        tpHint.textContent = 'Total power gives context for the LF/HF ratio above — the same ratio means less when total power is very low (weak overall signal) than when total power is robust.';
-    }
-    const lfPct = r.lfNu !== null ? r.lfNu : 50, hfPct = r.hfNu !== null ? r.hfNu : 50;
-    document.getElementById('lfFill').style.width = lfPct + '%';
-    document.getElementById('hfFill').style.width = hfPct + '%';
-    document.getElementById('lfFill').textContent = 'LF ' + lfPct.toFixed(0) + '%';
-    document.getElementById('hfFill').textContent = 'HF ' + hfPct.toFixed(0) + '%';
-    if (r.breathingBpm) rrVal.textContent = r.breathingBpm;
-
-    const interpBox = document.getElementById('interpBox');
-    if (r.lfNu !== null && r.hfNu !== null) {
-        if (r.lfNu > r.hfNu + 10) {
-            interpBox.className = 'interp-box amber';
-            interpBox.innerHTML = `<b>LF appears more prominent than HF</b> in this window, a pattern often
-                associated with more sympathetic ("fight or flight") nervous system activity relative to a
-                resting baseline. This is a descriptive spectral pattern, not a diagnosis — the clinical
-                validity of LF/HF as a direct sympathovagal index is actively debated in current research.`;
-        } else if (r.hfNu > r.lfNu + 10) {
-            interpBox.className = 'interp-box';
-            interpBox.innerHTML = `<b>HF appears more prominent than LF</b> in this window, a pattern often
-                associated with parasympathetic ("rest and digest") activity and slower, relaxed breathing.
-                This is a descriptive spectral pattern, not a diagnosis.`;
-        } else {
-            interpBox.className = 'interp-box';
-            interpBox.innerHTML = `LF and HF power are fairly balanced in this window — no strong lean toward
-                either a more activated or more relaxed spectral pattern.`;
+      }
+      if (needGyro) {
+        const r = e.rotationRate;
+        if (r && r.alpha !== null && r.alpha !== undefined) {
+          onGyroSample(r.beta, r.gamma, r.alpha); // beta/gamma/alpha ~ x/y/z rotation
         }
+      }
+    }, { passive: true });
+  }
+
+  async function requestIOSPermissionIfNeeded() {
+    // iOS 13+ requires an explicit user-gesture permission request for both
+    // DeviceMotionEvent and DeviceOrientationEvent (covers rotationRate too).
+    let granted = true;
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      try {
+        const res = await DeviceMotionEvent.requestPermission();
+        granted = (res === 'granted');
+      } catch (err) {
+        console.warn('DeviceMotionEvent permission request failed', err);
+        granted = false;
+      }
     }
-}
+    return granted;
+  }
 
-function drawSpectrumChart(canvasEl, freqs, psd) {
-    const c = canvasEl.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = canvasEl.clientWidth || 300, cssH = canvasEl.clientHeight || 120;
-    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, cssW, cssH);
-    const pad = { left: 30, right: 8, top: 8, bottom: 16 };
-    const plotW = cssW - pad.left - pad.right, plotH = cssH - pad.top - pad.bottom;
-    const maxFreq = 0.5, maxPsd = Math.max(...psd, 0.0001) * 1.15;
-    const xPix = f => pad.left + (f / maxFreq) * plotW;
-    const yPix = p => pad.top + plotH - (p / maxPsd) * plotH;
-    c.strokeStyle = '#22352E'; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(pad.left, pad.top); c.lineTo(pad.left, pad.top + plotH); c.lineTo(pad.left + plotW, pad.top + plotH); c.stroke();
-    c.fillStyle = '#7C948C'; c.font = '9px monospace'; c.textAlign = 'center';
-    for (let f = 0; f <= 0.5 + 1e-9; f += 0.1) {
-        const x = xPix(f); c.strokeStyle = '#22352E';
-        c.beginPath(); c.moveTo(x, pad.top + plotH); c.lineTo(x, pad.top + plotH + 4); c.stroke();
-        c.fillText(f.toFixed(1), x, pad.top + plotH + 13);
-    }
-    function shadeBand(f0, f1, color) {
-        c.fillStyle = color; c.beginPath(); c.moveTo(xPix(f0), pad.top + plotH);
-        for (let k = 0; k < freqs.length; k++) { if (freqs[k] < f0 || freqs[k] > f1) continue; c.lineTo(xPix(freqs[k]), yPix(psd[k])); }
-        c.lineTo(xPix(f1), pad.top + plotH); c.closePath(); c.fill();
-    }
-    shadeBand(0.04, 0.15, 'rgba(240,180,41,0.35)');
-    shadeBand(0.15, 0.40, 'rgba(79,217,196,0.35)');
-    c.strokeStyle = '#E7F3EE'; c.lineWidth = 1.3; c.beginPath();
-    for (let k = 0; k < freqs.length; k++) { if (freqs[k] > maxFreq) break; const x = xPix(freqs[k]), y = yPix(psd[k]); if (k === 0) c.moveTo(x, y); else c.lineTo(x, y); }
-    c.stroke();
-}
-
-/* ================================================================
-   SECTION 6.5 — AUTONOMIC STATE REPORT
-   Combines the (already-validated) HR/RMSSD/SDNN/frequency-domain
-   pipeline above into a single plain-language classification along
-   a calm <-> depleted spectrum. This is a HEURISTIC wellness
-   composite, not a validated clinical staging instrument — no such
-   instrument exists that stages "chronic wear" or "exhaustion" from
-   a single short consumer-camera scan. The acute/chronic/depleted
-   split specifically uses total spectral power (or SDNN as a
-   fallback) as a rough proxy for overall autonomic "reserve",
-   distinct from the sympathetic/parasympathetic balance itself —
-   grounded in the general HRV-literature idea that acute stress
-   shifts the balance between bands without necessarily suppressing
-   overall variability, while prolonged stress/exhaustion tends to
-   suppress it globally. PLR results are deliberately NOT fed into
-   this score, given their documented measurement noise elsewhere in
-   this app — they're shown separately, for context only.
-   ================================================================ */
-function computeAutonomicState() {
-    if (!finalTimeResult) return null;
-    const rmssd = finalTimeResult.rmssd;
-    const sdnn = finalTimeResult.sdnn;
-    const avgBpm = finalTimeResult.avgBpm;
-    const freq = finalFreqResult;
-
-    const components = [];
-    if (rmssd !== null) components.push({ v: Math.max(0, Math.min(100, 100 - (rmssd / 70) * 100)), w: 0.45 });
-    if (freq && freq.hfNu !== null) components.push({ v: Math.max(0, Math.min(100, 100 - freq.hfNu)), w: 0.35 });
-    if (freq && freq.breathingBpm) {
-        const bpm = freq.breathingBpm;
-        const rrScore = bpm <= 10 ? 0 : bpm >= 30 ? 100 : ((bpm - 10) / 20) * 100;
-        components.push({ v: rrScore, w: 0.10 });
-    }
-    const hrScore = avgBpm <= 65 ? 0 : avgBpm >= 100 ? Math.min(100, 60 + (avgBpm - 100)) : ((avgBpm - 65) / 35) * 60;
-    components.push({ v: hrScore, w: 0.10 });
-
-    const totalW = components.reduce((a, c) => a + c.w, 0);
-    const sympatheticScore = components.reduce((a, c) => a + c.v * c.w, 0) / totalW;
-
-    let reserveLow = false, reserveBasis = null;
-    if (freq && freq.totalPower !== null && freq.totalPower !== undefined) {
-        reserveLow = freq.totalPower < 50;
-        reserveBasis = 'total spectral power (' + freq.totalPower.toFixed(1) + ' ms²)';
-    } else if (sdnn !== null) {
-        reserveLow = sdnn < 20;
-        reserveBasis = 'SDNN (' + sdnn + ' ms) — frequency-domain data unavailable this scan';
+  async function enableSensors() {
+    const iosGranted = await requestIOSPermissionIfNeeded();
+    if (!iosGranted) {
+      permissionGate.innerHTML = '<p style="color:var(--coral)">Motion sensor access was denied. This app cannot function without it — please enable Motion & Orientation access for this site in your browser/device settings and reload.</p>';
+      return;
     }
 
-    let stateKey, state, description;
-    if (sympatheticScore < 25) {
-        stateKey = 'calm'; state = 'Calm / Relaxed State';
-        description = 'Readings show a pattern typically associated with rest-and-digest (parasympathetic-leaning) activity: relatively high heart rate variability, an unhurried breathing rate, and a heart rate on the lower end of a typical range.';
-    } else if (sympatheticScore < 45) {
-        stateKey = 'mild'; state = 'Mild Alertness';
-        description = 'Readings sit in a moderate, everyday-functioning range — neither strongly relaxed nor strongly activated. This is a common pattern during normal daily activity, focus, or mild anticipation.';
-    } else if (!reserveLow) {
-        stateKey = 'acute'; state = 'Acute Fight-or-Flight Pattern';
-        description = 'Readings show a pattern typically associated with acute sympathetic activation — lower heart rate variability, a faster or shallower breathing pattern, and/or an elevated heart rate — while overall autonomic capacity (' + (reserveBasis || 'variability') + ') still looks reasonably intact. This often reflects a short-term response: the test itself, caffeine, recent activity, or a recent stressor, rather than an ongoing state.';
-    } else if (sympatheticScore < 70) {
-        stateKey = 'chronic'; state = 'Sustained Strain Pattern';
-        description = 'Readings combine sympathetic-leaning activation with reduced overall heart rate variability (' + (reserveBasis || 'lower reserve') + '), a pattern sometimes associated in the HRV literature with prolonged or repeated stress exposure rather than a single acute moment. One scan cannot establish that this is genuinely ongoing — check History below for whether this pattern repeats across separate sessions before drawing that conclusion.';
-    } else {
-        stateKey = 'depleted'; state = 'Significant Depletion Pattern';
-        description = 'Readings show both strong sympathetic-leaning activation and markedly reduced overall heart rate variability (' + (reserveBasis || 'lower reserve') + ') — a combination sometimes described in HRV research as consistent with prolonged stress, overtraining, or exhaustion. This describes a pattern in a single snapshot reading, not a diagnosis of clinical exhaustion, burnout, or any medical condition — those require clinical evaluation and a history of symptoms over time. If this persists across repeated tests, or you have symptoms of exhaustion, it is worth discussing with a clinician.';
-    }
-
-    return {
-        stateKey, state, description, sympatheticScore: Math.round(sympatheticScore),
-        reserveLow, rmssd, sdnn, hfNu: freq ? freq.hfNu : null, lfHfRatio: freq ? freq.lfHfRatio : null,
-        totalPower: freq ? freq.totalPower : null, breathingBpm: freq ? freq.breathingBpm : null, avgBpm
-    };
-}
-
-function renderAutonomicReport() {
-    const reportPanel = document.getElementById('reportPanel');
-    const result = computeAutonomicState();
-    if (!result) { reportPanel.style.display = 'none'; return; }
-    reportPanel.style.display = 'flex';
-
-    const nameEl = document.getElementById('reportStateName');
-    nameEl.textContent = result.state;
-    nameEl.className = 'report-state-name state-' + result.stateKey;
-
-    document.getElementById('reportMarker').style.left = result.sympatheticScore + '%';
-    document.getElementById('reportDescription').textContent = result.description;
-    document.getElementById('reportDate').textContent = new Date().toLocaleString();
-
-    const rows = [
-        ['Activation Index', result.sympatheticScore + ' / 100'],
-        ['RMSSD', result.rmssd !== null ? result.rmssd + ' ms' : '—'],
-        ['HF (normalized)', result.hfNu !== null ? result.hfNu.toFixed(0) + '%' : '—'],
-        ['LF/HF Ratio', result.lfHfRatio !== null ? result.lfHfRatio.toFixed(2) : '—'],
-        ['Total Power', result.totalPower !== null ? result.totalPower.toFixed(1) + ' ms²' : '—'],
-        ['Respiration', result.breathingBpm ? result.breathingBpm + ' br/min' : '—'],
-    ];
-    document.getElementById('reportMetrics').innerHTML = rows.map(([label, value]) => `
-        <div class="metric-card"><div class="m-label">${label}</div><div class="m-value">${value}</div></div>
-    `).join('');
-
-    document.getElementById('reportDisclaimer').innerHTML = `This is a heuristic wellness composite built from the
-        HR/HRV/respiration measurements above — it is <b>not a validated clinical staging instrument</b> and not a
-        diagnosis. Terms like "sustained strain" and "depletion" describe a single-session physiological pattern,
-        not a confirmed chronic or clinical condition. Pupillary (PLR) results are shown separately above and are
-        not factored into this score, given their known measurement variability.`;
-
-    renderPoincareSection();
-    renderMeanPulseWaveSection();
-    renderHrTrendSection();
-    renderBalanceQuadrantSection(result);
-    renderReportPlrSummary();
-    renderReportEomSummary();
-}
-
-/* ---------- Poincaré (RR scatter) plot ---------- */
-// SD1/SD2 derived from already-validated RMSSD/SDNN via the standard
-// textbook relationship, rather than recomputing from scratch — cross-
-// checked against direct geometric computation on synthetic data before
-// shipping (see project test suite): SD1 = RMSSD/sqrt(2),
-// SD2 = sqrt(2*SDNN^2 - 0.5*RMSSD^2).
-function computePoincare() {
-    if (!finalTimeResult || finalTimeResult.rmssd === null || finalTimeResult.sdnn === null || correctedIntervals.length < 5) return null;
-    const rmssd = finalTimeResult.rmssd, sdnn = finalTimeResult.sdnn;
-    const sd1 = rmssd / Math.sqrt(2);
-    const sd2 = Math.sqrt(Math.max(0, 2 * sdnn * sdnn - 0.5 * rmssd * rmssd));
-    const pairs = [];
-    for (let i = 0; i < correctedIntervals.length - 1; i++) pairs.push([correctedIntervals[i], correctedIntervals[i + 1]]);
-    return { sd1, sd2, pairs };
-}
-
-function drawPoincarePlot(canvasEl, pairs, sd1, sd2) {
-    const c = canvasEl.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = canvasEl.clientWidth || 220, cssH = canvasEl.clientHeight || 220;
-    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, cssW, cssH);
-    if (pairs.length < 3) return;
-
-    const allVals = pairs.flat();
-    const mn = Math.min(...allVals) - 30, mx = Math.max(...allVals) + 30;
-    const range = (mx - mn) || 1;
-    const pad = 14;
-    const toPix = v => pad + ((v - mn) / range) * (Math.min(cssW, cssH) - 2 * pad);
-
-    c.strokeStyle = '#22352E'; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(pad, cssH - pad); c.lineTo(cssW - pad, pad); c.stroke(); // identity line
-
-    c.fillStyle = 'rgba(179,153,240,0.55)';
-    pairs.forEach(([x, y]) => {
-        const px = toPix(x), py = cssH - toPix(y);
-        c.beginPath(); c.arc(px, py, 2.4, 0, Math.PI * 2); c.fill();
-    });
-}
-
-function renderPoincareSection() {
-    const box = document.getElementById('poincareBox');
-    const p = computePoincare();
-    if (!p) { box.style.display = 'none'; return; }
-    box.style.display = 'block';
-    drawPoincarePlot(document.getElementById('poincareCanvas'), p.pairs, p.sd1, p.sd2);
-    document.getElementById('sd1Val').textContent = p.sd1.toFixed(1) + ' ms';
-    document.getElementById('sd2Val').textContent = p.sd2.toFixed(1) + ' ms';
-}
-
-/* ---------- Mean (ensemble-averaged) pulse wave ---------- */
-function computeMeanPulseWave() {
-    if (beatShapes.length < 5) return null;
-    const n = BEAT_SHAPE_POINTS;
-    const mean = new Array(n).fill(0);
-    beatShapes.forEach(shape => shape.forEach((v, i) => mean[i] += v));
-    for (let i = 0; i < n; i++) mean[i] /= beatShapes.length;
-    return { mean, beatCount: beatShapes.length };
-}
-
-function drawMeanPulseWave(canvasEl, mean) {
-    const c = canvasEl.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = canvasEl.clientWidth || 300, cssH = canvasEl.clientHeight || 110;
-    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, cssW, cssH);
-    const pad = 10;
-    c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--violet').trim();
-    c.lineWidth = 2; c.beginPath();
-    mean.forEach((v, i) => {
-        const x = pad + (i / (mean.length - 1)) * (cssW - 2 * pad);
-        const y = cssH - pad - v * (cssH - 2 * pad);
-        if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
-    });
-    c.stroke();
-}
-
-function renderMeanPulseWaveSection() {
-    const box = document.getElementById('pulseWaveBox');
-    const r = computeMeanPulseWave();
-    if (!r) { box.style.display = 'none'; return; }
-    box.style.display = 'block';
-    drawMeanPulseWave(document.getElementById('pulseWaveCanvas'), r.mean);
-    document.getElementById('pulseWaveBeatCount').textContent = r.beatCount;
-}
-
-/* ---------- Condensed PLR / EOM summaries for the report ---------- */
-function renderReportPlrSummary() {
-    const box = document.getElementById('reportPlrBox');
-    if (!finalPupilResultGlobal) { box.innerHTML = '<div class="hint">Pupillary Light Reflex test not run this session.</div>'; return; }
-    const r = finalPupilResultGlobal;
-    box.innerHTML = `
-        <div class="metric-row cols3">
-            <div class="metric-card"><div class="m-label">Peak Constriction</div><div class="m-value">${r.avgConstriction.toFixed(1)}%</div></div>
-            <div class="metric-card"><div class="m-label">Latency</div><div class="m-value">${r.latencyMs !== null ? Math.round(r.latencyMs) : '—'}</div><div class="m-sub">ms</div></div>
-            <div class="metric-card"><div class="m-label">Recovery</div><div class="m-value">${r.recoveryMs !== null ? Math.round(r.recoveryMs) : '—'}</div><div class="m-sub">ms</div></div>
-        </div>`;
-}
-function renderReportEomSummary() {
-    const box = document.getElementById('reportEomBox');
-    if (!eomStepResults || eomStepResults.length === 0) { box.innerHTML = '<div class="hint">Guided eye movement test not run this session.</div>'; return; }
-    const passed = eomStepResults.filter(r => r.match).length;
-    box.innerHTML = `<div class="hint">${passed} of ${eomStepResults.length} directions tracked successfully this session.
-        ${fixationResult ? (fixationResult.oscillationDetected ? 'A rhythmic gaze pattern was flagged during fixation — see Eye Movement panel above for detail.' : 'No rhythmic gaze oscillation flagged during fixation.') : ''}</div>`;
-}
-
-/* ---------- Heart rate trend over the session ---------- */
-// Uses `peaks` (full-session beat timestamps, unlike the display buffers
-// which trim to ~20s) to plot instantaneous HR across the whole scan,
-// including long continuous-mode sessions.
-function computeHrTrend() {
-    if (peaks.length < 4) return null;
-    const points = [];
-    for (let i = 1; i < peaks.length; i++) {
-        const interval = peaks[i] - peaks[i - 1];
-        const bpm = 60000 / interval;
-        if (bpm >= 30 && bpm <= 220) points.push({ t: peaks[i], bpm });
-    }
-    return points.length >= 4 ? points : null;
-}
-
-function drawHrTrend(canvasEl, points) {
-    const c = canvasEl.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = canvasEl.clientWidth || 300, cssH = canvasEl.clientHeight || 110;
-    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, cssW, cssH);
-    const pad = { left: 30, right: 8, top: 8, bottom: 16 };
-    const plotW = cssW - pad.left - pad.right, plotH = cssH - pad.top - pad.bottom;
-    const bpms = points.map(p => p.bpm);
-    const mn = Math.min(...bpms) - 3, mx = Math.max(...bpms) + 3;
-    const range = (mx - mn) || 1;
-    const t0 = points[0].t, t1 = points[points.length - 1].t, tRange = (t1 - t0) || 1;
-    const xPix = t => pad.left + ((t - t0) / tRange) * plotW;
-    const yPix = v => pad.top + plotH - ((v - mn) / range) * plotH;
-
-    const mean = bpms.reduce((a, b) => a + b, 0) / bpms.length;
-    c.strokeStyle = '#334155'; c.setLineDash([3, 3]); c.lineWidth = 1;
-    c.beginPath(); c.moveTo(pad.left, yPix(mean)); c.lineTo(pad.left + plotW, yPix(mean)); c.stroke();
-    c.setLineDash([]);
-
-    c.fillStyle = '#7C948C'; c.font = '9px monospace'; c.textAlign = 'right';
-    c.fillText(Math.round(mx), pad.left - 4, yPix(mx) + 3);
-    c.fillText(Math.round(mn), pad.left - 4, yPix(mn) + 3);
-
-    c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--trace').trim();
-    c.lineWidth = 1.6; c.beginPath();
-    points.forEach((p, i) => { const x = xPix(p.t), y = yPix(p.bpm); if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); });
-    c.stroke();
-}
-
-function renderHrTrendSection() {
-    const box = document.getElementById('hrTrendBox');
-    const points = computeHrTrend();
-    if (!points) { box.style.display = 'none'; return; }
-    box.style.display = 'block';
-    drawHrTrend(document.getElementById('hrTrendCanvas'), points);
-}
-
-/* ---------- 2D sympathetic activation / autonomic reserve chart ---------- */
-// Visualizes the same two-axis model already driving the calm/mild/acute/
-// chronic/depleted classification above (sympathetic score + reserve),
-// spatially rather than just as text. Reserve score here is a display-only
-// rescaling of total power (or SDNN) for chart placement — the classification
-// logic itself still uses the reserveLow threshold defined in
-// computeAutonomicState, not this rescaled value.
-function computeReserveScore(result) {
-    if (result.totalPower !== null && result.totalPower !== undefined) return Math.max(0, Math.min(100, (result.totalPower / 150) * 100));
-    if (result.sdnn !== null) return Math.max(0, Math.min(100, (result.sdnn / 60) * 100));
-    return 50;
-}
-
-function drawBalanceQuadrant(canvasEl, sympatheticScore, reserveScore) {
-    const c = canvasEl.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = canvasEl.clientWidth || 240, cssH = canvasEl.clientHeight || 240;
-    canvasEl.width = cssW * dpr; canvasEl.height = cssH * dpr;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, cssW, cssH);
-    const pad = 14;
-    const size = Math.min(cssW, cssH) - 2 * pad;
-    const toX = v => pad + (v / 100) * size;
-    const toY = v => pad + size - (v / 100) * size; // reserve increases upward
-
-    const zoneColors = ['rgba(229,104,107,0.14)', 'rgba(224,103,42,0.14)', 'rgba(79,217,196,0.14)', 'rgba(179,153,240,0.14)'];
-    c.fillStyle = zoneColors[0]; c.fillRect(toX(50), toY(50), size / 2, size / 2);          // high activation, low reserve
-    c.fillStyle = zoneColors[1]; c.fillRect(toX(50), pad, size / 2, size / 2);               // high activation, high reserve
-    c.fillStyle = zoneColors[2]; c.fillRect(pad, pad, size / 2, size / 2);                   // low activation, high reserve
-    c.fillStyle = zoneColors[3]; c.fillRect(pad, toY(50), size / 2, size / 2);               // low activation, low reserve
-
-    c.strokeStyle = '#22352E'; c.lineWidth = 1;
-    c.strokeRect(pad, pad, size, size);
-    c.beginPath(); c.moveTo(toX(50), pad); c.lineTo(toX(50), pad + size); c.stroke();
-    c.beginPath(); c.moveTo(pad, toY(50)); c.lineTo(pad + size, toY(50)); c.stroke();
-
-    c.fillStyle = '#7C948C'; c.font = '9px monospace';
-    c.textAlign = 'left'; c.fillText('Low reserve', pad + 2, pad + size - 4);
-    c.textAlign = 'right'; c.fillText('High reserve', pad + size - 2, pad + 12);
-    c.textAlign = 'left'; c.fillText('Calm/mild', pad + 2, pad + 12);
-    c.textAlign = 'right'; c.fillText('Depleted', pad + size - 2, pad + size - 4);
-
-    const px = toX(sympatheticScore), py = toY(reserveScore);
-    c.fillStyle = '#F8FAFC';
-    c.beginPath(); c.arc(px, py, 5, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--trace').trim();
-    c.lineWidth = 2; c.beginPath(); c.arc(px, py, 8, 0, Math.PI * 2); c.stroke();
-}
-
-function renderBalanceQuadrantSection(result) {
-    const box = document.getElementById('balanceQuadrantBox');
-    if (!result) { box.style.display = 'none'; return; }
-    box.style.display = 'block';
-    const reserveScore = computeReserveScore(result);
-    drawBalanceQuadrant(document.getElementById('balanceQuadrantCanvas'), result.sympatheticScore, reserveScore);
-}
-
-document.getElementById('printReportBtn')?.addEventListener('click', () => window.print());
-
-/* ================================================================
-   SECTION 7 — HISTORY (localStorage)
-   ================================================================ */
-function loadHistory() { try { const raw = localStorage.getItem(HISTORY_KEY); return raw ? JSON.parse(raw) : []; } catch (e) { return []; } }
-function saveHistoryEntry() {
-    if (!finalTimeResult) return;
-    const history = loadHistory();
-    const state = computeAutonomicState();
-    history.unshift({
-        time: new Date().toISOString(),
-        hr: finalTimeResult.avgBpm,
-        rmssd: finalTimeResult.rmssd,
-        sdnn: finalTimeResult.sdnn,
-        rr: finalFreqResult && finalFreqResult.breathingBpm ? finalFreqResult.breathingBpm : null,
-        lfhf: finalFreqResult && finalFreqResult.lfHfRatio !== null ? finalFreqResult.lfHfRatio.toFixed(2) : null,
-        confidence: finalTimeResult.confidence,
-        state: state ? state.state : null,
-        stateKey: state ? state.stateKey : null
-    });
-    if (history.length > 50) history.length = 50;
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch (e) { /* storage unavailable */ }
-    renderHistory();
-}
-function renderHistory() {
-    const history = loadHistory();
-    if (history.length === 0) { historyBody.innerHTML = `<tr><td colspan="8" style="color:var(--muted); text-align:center; padding:12px;">No readings yet</td></tr>`; return; }
-    historyBody.innerHTML = history.map(h => {
-        const d = new Date(h.time);
-        return `<tr>
-            <td>${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-            <td>${h.hr ?? '—'}</td><td>${h.rmssd ?? '—'}</td><td>${h.sdnn ?? '—'}</td>
-            <td>${h.rr ?? '—'}</td><td>${h.lfhf ?? '—'}</td><td>${h.confidence ?? '—'}</td>
-            <td style="${h.stateKey ? 'color:var(--' + (h.stateKey === 'chronic' ? 'burnt' : h.stateKey === 'depleted' || h.stateKey === 'acute' ? 'coral' : h.stateKey === 'mild' ? 'violet' : 'trace') + ')' : ''}">${h.state ?? '—'}</td>
-        </tr>`;
-    }).join('');
-}
-document.getElementById('clearHistoryBtn').addEventListener('click', () => {
-    if (!confirm('Clear all saved scan history? This cannot be undone.')) return;
-    try { localStorage.removeItem(HISTORY_KEY); } catch (e) {}
-    renderHistory();
-});
-renderHistory();
-
-/* ================================================================
-   SECTION 8 — PUPILLARY LIGHT REFLEX (real, MediaPipe-based)
-   Tracks each eye SEPARATELY. Two measurements per frame:
-     1. IRIS diameter (from MediaPipe iris landmarks) — anatomically
-        stable (~11.7mm avg adult), used purely as a calibration
-        ruler to get a pixel-to-mm scale. It does NOT itself
-        constrict with light.
-     2. PUPIL diameter — the actual dark opening that constricts,
-        found via a radial dark-boundary pixel scan (tested against
-        synthetic images before shipping; real eyes are messier —
-        eyelashes, glare, iris color — so treat as experimental.
-   Flash sequence: brief dark-adaptation phase, then a bright flash
-   with a forced-reflow to guarantee the browser actually paints the
-   bright frame before fading (the earlier version skipped this and
-   the flash silently never rendered on at least one real device).
-   ================================================================ */
-const IRIS_DIAMETER_MM = 11.7; // population-average adult horizontal iris diameter; individual variation is small (~ +-0.5mm) per eye-biometrics literature, used here as a built-in calibration ruler
-const EYE_A_IDX = { center: 468, b1: 469, b2: 470, b3: 471, b4: 472 };
-const EYE_B_IDX = { center: 473, b1: 474, b2: 475, b3: 476, b4: 477 };
-
-let faceLandmarker = null, pupilStream = null, pupilRunning = false;
-let pupilSamplesA = [], pupilSamplesB = []; // per-eye {t, ratio, pupilMm}
-let pupilBaselineA = null, pupilBaselineB = null; // baseline PUPIL mm (dark-adapted)
-let pupilStartTime = 0, flashTimeMs = null;
-let faceDetectedFrames = 0, totalPupilFrames = 0;
-
-const pupilVideo = document.getElementById('pupil-video');
-const pupilStatusText = document.getElementById('pupilStatusText');
-const pupilTraceCanvas = document.getElementById('pupilTraceCanvas');
-const flashOverlay = document.getElementById('flashOverlay');
-const eyeGuideRing = document.getElementById('eyeGuideRing');
-const plrChecklist = document.getElementById('plrChecklist');
-const plrNumbers = document.getElementById('plrNumbers');
-const pupilSampleCanvas = document.getElementById('pupil-sample-canvas');
-const pupilSampleCtx = pupilSampleCanvas.getContext('2d', { willReadFrequently: true });
-
-async function loadFaceLandmarker() {
-    const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14");
-    const { FaceLandmarker, FilesetResolver } = vision;
-    const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
-    faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
-        runningMode: "VIDEO", numFaces: 1
-    });
-}
-
-document.getElementById('pupilBtn').addEventListener('click', startEyeResponseTest);
-
-async function startEyeResponseTest() {
-    const btn = document.getElementById('pupilBtn');
-    btn.disabled = true;
-    plrChecklist.style.display = 'none'; plrNumbers.style.display = 'none';
-    try {
-        if (!faceLandmarker) { pupilStatusText.textContent = "Loading face-tracking model (first run only)..."; await loadFaceLandmarker(); }
-        pupilStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }, audio: false });
-        pupilVideo.srcObject = pupilStream;
-        await pupilVideo.play();
-
-        pupilSamplesA = []; pupilSamplesB = []; pupilBaselineA = null; pupilBaselineB = null;
-        faceDetectedFrames = 0; totalPupilFrames = 0;
-        pupilRunning = true; pupilStartTime = performance.now(); flashTimeMs = null;
-        pupilStatusText.textContent = "Locating face... (screen will dim briefly, then flash)";
-        eyeGuideRing.classList.remove('active');
-        beginDarkAdaptation();
-        requestAnimationFrame(pupilLoop);
-
-        setTimeout(() => {
-            const baseA = pupilSamplesA.filter(s => s.t < 2000 && s.pupilMm !== null).map(s => s.pupilMm);
-            const baseB = pupilSamplesB.filter(s => s.t < 2000 && s.pupilMm !== null).map(s => s.pupilMm);
-            if (baseA.length > 3) pupilBaselineA = baseA.reduce((a, b) => a + b, 0) / baseA.length;
-            if (baseB.length > 3) pupilBaselineB = baseB.reduce((a, b) => a + b, 0) / baseB.length;
-            flashTimeMs = performance.now() - pupilStartTime;
-            triggerLightFlash();
-        }, 2000);
-
-        setTimeout(() => stopEyeResponseTest(), 8000);
-    } catch (err) {
-        pupilStatusText.textContent = "Camera access denied, or the face-tracking model failed to load (needs internet access).";
-        btn.disabled = false;
-    }
-}
-
-function pupilLoop() {
-    if (!pupilRunning) return;
-    if (pupilVideo.readyState >= 2 && faceLandmarker) {
-        totalPupilFrames++;
-        const result = faceLandmarker.detectForVideo(pupilVideo, performance.now());
-        if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
-            faceDetectedFrames++;
-            eyeGuideRing.classList.add('active');
-            const lm = result.faceLandmarks[0];
-            const vw = pupilVideo.videoWidth, vh = pupilVideo.videoHeight;
-            const measA = measureEyePupil(lm, vw, vh, EYE_A_IDX);
-            const measB = measureEyePupil(lm, vw, vh, EYE_B_IDX);
-            const t = performance.now() - pupilStartTime;
-            pupilSamplesA.push({ t, pupilMm: measA ? measA.pupilMm : null });
-            pupilSamplesB.push({ t, pupilMm: measB ? measB.pupilMm : null });
-            pupilStatusText.textContent = pupilBaselineA ? "Tracking both eyes..." : "Tracking... acquiring baseline";
-        } else {
-            eyeGuideRing.classList.remove('active');
-            pupilStatusText.textContent = "Face not detected — center your face in the ring with good, even lighting.";
-        }
-    }
-    if (pupilRunning) requestAnimationFrame(pupilLoop);
-}
-
-// Iris landmarks -> mm/px calibration, then a radial dark-boundary scan
-// within that eye's region of the actual video frame to find the pupil
-// (not the iris) boundary. Returns null if the scan can't get a confident
-// reading on enough rays (glare, eyelash occlusion, poor lighting, etc).
-function measureEyePupil(landmarks, vw, vh, idx) {
-    const px = i => ({ x: landmarks[i].x * vw, y: landmarks[i].y * vh });
-    const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
-    const center = px(idx.center), b1 = px(idx.b1), b2 = px(idx.b2), b3 = px(idx.b3), b4 = px(idx.b4);
-    const irisDiamPx = (dist(b1, b3) + dist(b2, b4)) / 2;
-    if (irisDiamPx <= 0) return null;
-    const mmPerPx = IRIS_DIAMETER_MM / irisDiamPx;
-
-    const irisRadiusPx = irisDiamPx / 2;
-    const roiRadius = irisRadiusPx * 1.6;
-    const sx = Math.max(0, center.x - roiRadius), sy = Math.max(0, center.y - roiRadius);
-    const sw = Math.min(vw - sx, roiRadius * 2), sh = Math.min(vh - sy, roiRadius * 2);
-    if (sw < 8 || sh < 8) return null;
-
-    const sampleSize = pupilSampleCanvas.width; // 64
-    pupilSampleCtx.clearRect(0, 0, sampleSize, sampleSize);
-    pupilSampleCtx.drawImage(pupilVideo, sx, sy, sw, sh, 0, 0, sampleSize, sampleSize);
-    let imgData;
-    try { imgData = pupilSampleCtx.getImageData(0, 0, sampleSize, sampleSize).data; } catch (e) { return null; }
-    const scaleX = sampleSize / sw, scaleY = sampleSize / sh;
-    const avgScale = (scaleX + scaleY) / 2;
-
-    function getLuminance(x, y) {
-        const xi = Math.round(x), yi = Math.round(y);
-        if (xi < 0 || yi < 0 || xi >= sampleSize || yi >= sampleSize) return 255;
-        const i = (yi * sampleSize + xi) * 4;
-        return 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
-    }
-
-    const centerXInSample = (center.x - sx) * scaleX;
-    const centerYInSample = (center.y - sy) * scaleY;
-    // Cap the search radius to the ACTUAL iris boundary in this crop (not a
-    // fixed fraction of the canvas) so the radial scan can never wander past
-    // the iris into the much brighter sclera. Testing found the previous
-    // fixed-fraction cap (45% of canvas) sat outside the true iris boundary
-    // (~31% of canvas, given this crop's margin) for the geometry actually
-    // used here, letting the scan latch onto the iris/sclera edge instead of
-    // the pupil/iris edge — producing "pupil" readings close to the full
-    // iris size. Contrast gate also lowered (25 -> 15): darker irises can
-    // have modest pupil/iris luminance contrast, and it's better to attempt
-    // a real reading there than force a null.
-    const irisRadiusInSample = irisRadiusPx * avgScale;
-    const maxRadiusSample = irisRadiusInSample * 0.85;
-    const pupilRadiusSamplePx = detectPupilRadiusPx(getLuminance, centerXInSample, centerYInSample, maxRadiusSample, 16, 15);
-    if (pupilRadiusSamplePx === null) return null;
-
-    const pupilRadiusVideoPx = pupilRadiusSamplePx / avgScale;
-    const pupilDiamPx = pupilRadiusVideoPx * 2;
-    return { pupilMm: pupilDiamPx * mmPerPx, irisDiamPx };
-}
-
-// Radial edge scan: walk outward from the eye center along several angles,
-// find where luminance crosses from dark (pupil) to lighter (iris) on each
-// ray, and take the median crossing radius. Rays with too little contrast
-// (glare, eyelash, closed eye) are skipped rather than guessed.
-// Validated against synthetic dark-circle-in-lighter-ring test images
-// (median error ~1px) before use here — real eyes will be noisier.
-function detectPupilRadiusPx(getLuminance, cx, cy, maxRadius, numAngles, contrastGate) {
-    contrastGate = contrastGate === undefined ? 25 : contrastGate;
-    const radii = [];
-    for (let a = 0; a < numAngles; a++) {
-        const theta = (a / numAngles) * 2 * Math.PI;
-        const dx = Math.cos(theta), dy = Math.sin(theta);
-        const samples = [];
-        for (let r = 0; r <= maxRadius; r++) samples.push(getLuminance(cx + dx * r, cy + dy * r));
-        const minL = Math.min(...samples), maxL = Math.max(...samples);
-        const contrast = maxL - minL;
-        if (contrast < contrastGate) continue;
-        const threshold = minL + contrast * 0.4;
-        let edgeR = null;
-        for (let r = 1; r <= maxRadius; r++) { if (samples[r] >= threshold) { edgeR = r; break; } }
-        if (edgeR !== null) radii.push(edgeR);
-    }
-    if (radii.length < Math.ceil(numAngles * 0.35)) return null;
-    radii.sort((a, b) => a - b);
-    return radii[Math.floor(radii.length / 2)];
-}
-
-function beginDarkAdaptation() {
-    flashOverlay.style.transition = 'opacity 0.4s ease-in';
-    flashOverlay.style.background = '#000000';
-    flashOverlay.style.opacity = '0.92';
-}
-
-function triggerLightFlash() {
-    flashOverlay.style.transition = 'none';
-    flashOverlay.style.background = '#ffffff';
-    flashOverlay.style.opacity = '1';
-    void flashOverlay.offsetHeight; // force a reflow so the browser actually paints this frame before the fade below starts — without this the two style changes can get coalesced and the flash never visibly renders
-    flashOverlay.style.transition = 'opacity 1.2s ease-out';
-    flashOverlay.style.opacity = '0';
-    pupilStatusText.textContent = "💡 Flash triggered — tracking response...";
-}
-
-function stopEyeResponseTest() {
-    pupilRunning = false;
-    flashOverlay.style.transition = 'opacity 0.3s ease-out';
-    flashOverlay.style.opacity = '0';
-    if (pupilStream) { pupilStream.getTracks().forEach(t => t.stop()); pupilStream = null; }
-    document.getElementById('pupilBtn').disabled = false;
-    renderPupilTrace();
-    summarizePlrChecklist();
-}
-
-function renderPupilTrace() {
-    const c = pupilTraceCanvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = pupilTraceCanvas.clientWidth || 300, cssH = pupilTraceCanvas.clientHeight || 70;
-    pupilTraceCanvas.width = cssW * dpr; pupilTraceCanvas.height = cssH * dpr;
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.clearRect(0, 0, cssW, cssH);
-    const validSamplesA = pupilSamplesA.filter(s => s.pupilMm !== null);
-    const validSamplesB = pupilSamplesB.filter(s => s.pupilMm !== null);
-    if (validSamplesA.length < 2 && validSamplesB.length < 2) return;
-    const pad = { left: 6, right: 6, top: 8, bottom: 8 };
-    const plotW = cssW - pad.left - pad.right, plotH = cssH - pad.top - pad.bottom;
-    const allSamples = validSamplesA.concat(validSamplesB);
-    const maxT = Math.max(...allSamples.map(s => s.t));
-    const allVals = allSamples.map(s => s.pupilMm);
-    const minV = Math.min(...allVals), maxV = Math.max(...allVals);
-    const range = Math.max(maxV - minV, 0.05);
-    const xPix = t => pad.left + (t / maxT) * plotW;
-    const yPix = v => pad.top + plotH - ((v - minV) / range) * plotH;
-    function drawSeries(samples, color) {
-        if (samples.length < 2) return;
-        c.strokeStyle = color; c.lineWidth = 1.5; c.beginPath();
-        samples.forEach((s, i) => { const x = xPix(s.t), y = yPix(s.pupilMm); if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); });
-        c.stroke();
-    }
-    drawSeries(validSamplesA, '#4FD9C4');
-    drawSeries(validSamplesB, '#B399F0');
-}
-
-function summarizePlrChecklist() {
-    plrChecklist.style.display = 'flex';
-    const rows = [];
-    const samplesA = smoothPupilSeries(pupilSamplesA.filter(s => s.pupilMm !== null));
-    const samplesB = smoothPupilSeries(pupilSamplesB.filter(s => s.pupilMm !== null));
-    const validA = pupilBaselineA !== null && samplesA.length >= 5;
-    const validB = pupilBaselineB !== null && samplesB.length >= 5;
-    const visibilityRate = totalPupilFrames > 0 ? faceDetectedFrames / totalPupilFrames : 0;
-    const asymmetryHint = document.getElementById('asymmetryHint');
-    asymmetryHint.style.display = 'none';
-
-    if (!validA && !validB) {
-        rows.push(['1', 'Pupils reacting to light?', 'na']);
-        rows.push(['2', 'Constriction within typical consumer-camera range?', 'na']);
-        rows.push(['3', 'Reaction equal in both eyes?', 'na']);
-        rows.push(['4', 'Iris/pupil clearly visible to camera throughout test?', visibilityRate >= 0.6 ? 'yes' : 'no']);
-        rows.push(['5', 'Pupil size within typical adult range?', 'na']);
-        plrChecklist.innerHTML = rows.map(renderCheckRow).join('');
-        plrNumbers.style.display = 'none';
-        pupilStatusText.textContent = 'Not enough signal captured — retry with your face well-lit and centered in the ring.';
-        finalPupilResultGlobal = null;
-        renderReportPlrSummary();
-        return;
-    }
-
-    // Minimum taken from the SMOOTHED series (short moving average), not a
-    // single raw frame — a single-frame minimum is disproportionately
-    // exposed to this technique's per-frame measurement noise (~1px error
-    // on typically ~10px pupil radii in synthetic testing), which was
-    // making the two-eye comparison noisier than the underlying signal.
-    // Also restricted to POST-FLASH samples only — searching the whole
-    // recording (including the pre-flash dark-adaptation baseline) could
-    // spuriously find its "minimum" before the flash even happened, which
-    // was producing near-zero latency readings that didn't reflect a real
-    // constriction response.
-    const postFlashA = flashTimeMs !== null ? samplesA.filter(s => s.t >= flashTimeMs) : samplesA;
-    const postFlashB = flashTimeMs !== null ? samplesB.filter(s => s.t >= flashTimeMs) : samplesB;
-    const minA = validA && postFlashA.length > 0 ? Math.min(...postFlashA.map(s => s.pupilMm)) : null;
-    const minB = validB && postFlashB.length > 0 ? Math.min(...postFlashB.map(s => s.pupilMm)) : null;
-    const constrictionA = validA && minA !== null ? ((pupilBaselineA - minA) / pupilBaselineA) * 100 : null;
-    const constrictionB = validB && minB !== null ? ((pupilBaselineB - minB) / pupilBaselineB) * 100 : null;
-    const constrictions = [constrictionA, constrictionB].filter(v => v !== null);
-    const avgConstriction = constrictions.reduce((a, b) => a + b, 0) / constrictions.length;
-
-    const reacting = avgConstriction >= 3;
-    const withinRange = avgConstriction >= 15;
-    let equalBothEyes = 'na';
-    let asymmetryGapPts = null;
-    if (constrictionA !== null && constrictionB !== null) {
-        asymmetryGapPts = Math.abs(constrictionA - constrictionB);
-        // Widened from an initial 5-point threshold: testing showed 5 points
-        // is inside this technique's own per-eye measurement noise floor,
-        // so it was flagging "unequal" almost by default rather than
-        // reflecting a real difference.
-        equalBothEyes = asymmetryGapPts <= 10 ? 'yes' : 'no';
-    }
-    const clearlyVisible = visibilityRate >= 0.6;
-
-    const baselineMmAvg = [pupilBaselineA, pupilBaselineB].filter(v => v !== null).reduce((a, b) => a + b, 0) / [pupilBaselineA, pupilBaselineB].filter(v => v !== null).length;
-    const sizeInRange = baselineMmAvg >= 2 && baselineMmAvg <= 9;
-
-    rows.push(['1', 'Pupils reacting to light?', reacting ? 'yes' : 'no']);
-    rows.push(['2', 'Constriction within typical consumer-camera range (≥15%)?', withinRange ? 'yes' : 'no']);
-    rows.push(['3', 'Reaction equal in both eyes (within 10 points)?', equalBothEyes]);
-    rows.push(['4', 'Iris/pupil clearly visible to camera throughout test?', clearlyVisible ? 'yes' : 'no']);
-    rows.push(['5', 'Pupil size within typical adult range (2-9mm)?', sizeInRange ? 'yes' : 'no']);
-    plrChecklist.innerHTML = rows.map(renderCheckRow).join('');
-
-    if (equalBothEyes === 'no') {
-        asymmetryHint.style.display = 'block';
-        asymmetryHint.innerHTML = `<b>Eyes differed by ${asymmetryGapPts.toFixed(1)} points this test.</b> With a
-            single-camera consumer technique like this, that's more often measurement noise (lighting angle,
-            eyelash occlusion, slightly different viewing angle per eye) than true anisocoria — most people's
-            eyes react almost identically. What matters is whether it's <b>consistent</b>: if repeat tests keep
-            showing the <i>same eye</i> reacting less, by a <i>similar</i> amount, that pattern is worth
-            mentioning to a clinician. If it varies randomly which eye "wins" each test, that points to noise,
-            not a real difference.`;
-    }
-
-    plrNumbers.style.display = 'grid';
-    document.getElementById('plrBaselineMm').textContent = baselineMmAvg.toFixed(2);
-    const minMmAvg = [minA, minB].filter(v => v !== null).reduce((a, b) => a + b, 0) / [minA, minB].filter(v => v !== null).length;
-    document.getElementById('plrMinMm').textContent = minMmAvg.toFixed(2);
-    document.getElementById('plrConstriction').textContent = avgConstriction.toFixed(1) + '%';
-    document.getElementById('plrConstrictionRight').textContent = constrictionA !== null ? constrictionA.toFixed(1) + '%' : '—';
-    document.getElementById('plrConstrictionLeft').textContent = constrictionB !== null ? constrictionB.toFixed(1) + '%' : '—';
-
-    let latencyMs = null, recoveryMs = null;
-    if (validA && flashTimeMs !== null && postFlashA.length > 0) {
-        let minIdx = 0, mv = Infinity;
-        postFlashA.forEach((s, i) => { if (s.pupilMm < mv) { mv = s.pupilMm; minIdx = i; } });
-        latencyMs = Math.max(0, postFlashA[minIdx].t - flashTimeMs);
-        const recoveryTarget = pupilBaselineA * 0.9;
-        for (let i = minIdx; i < postFlashA.length; i++) { if (postFlashA[i].pupilMm >= recoveryTarget) { recoveryMs = postFlashA[i].t - postFlashA[minIdx].t; break; } }
-    }
-    document.getElementById('plrLatency').textContent = latencyMs !== null ? Math.round(latencyMs) : '—';
-    document.getElementById('plrRecovery').textContent = recoveryMs !== null ? Math.round(recoveryMs) : 'n/a';
-
-    pupilStatusText.textContent = 'PLR test complete.';
-    finalPupilResultGlobal = { baselineMmAvg, minMmAvg, avgConstriction, constrictionA, constrictionB, latencyMs, recoveryMs, visibilityRate };
-    renderReportPlrSummary();
-}
-
-// Short centered moving average to reduce single-frame measurement noise
-// before extracting a minimum — a raw single-frame minimum is much more
-// exposed to per-frame noise than a value drawn from a smoothed series.
-//
-// NOTE: an outlier-rejection + "lowest 10%" robust-minimum variant was
-// tried here and reverted. It assumed real pupillary constriction always
-// changes gradually frame-to-frame, but real PLR response can be fast
-// enough (a few frames) that the rejection filter was discarding the
-// genuine constriction dip itself along with actual artifacts — leaving
-// mostly post-flash noise behind, which on real test data produced
-// nonsensical negative "constriction" (apparent dilation) instead of the
-// previous version's correct-direction-but-oversized readings. Simple
-// smoothing + raw minimum empirically produced more reliable Yes/No
-// verdicts on real devices than the "more sophisticated" version did.
-function smoothPupilSeries(samples, windowSize) {
-    windowSize = windowSize || 3;
-    if (samples.length < windowSize) return samples;
-    const half = Math.floor(windowSize / 2);
-    return samples.map((s, i) => {
-        const start = Math.max(0, i - half), end = Math.min(samples.length, i + half + 1);
-        const slice = samples.slice(start, end);
-        const avg = slice.reduce((a, x) => a + x.pupilMm, 0) / slice.length;
-        return { t: s.t, pupilMm: avg };
-    });
-}
-let finalPupilResultGlobal = null;
-
-function renderCheckRow([num, question, answer]) {
-    const cls = answer === 'yes' ? 'ans-yes' : answer === 'no' ? 'ans-no' : 'ans-na';
-    const label = answer === 'yes' ? 'YES' : answer === 'no' ? 'NO' : 'N/A';
-    return `<div class="check-row"><div class="q"><span class="n">${num}.</span><span>${question}</span></div><span class="check-answer ${cls}">${label}</span></div>`;
-}
-
-/* ================================================================
-   SECTION 9 — GUIDED EYE MOVEMENT (real, landmark-based gaze direction)
-   + FIXATION STABILITY / OSCILLATION SCREENING
-   Tracks the iris center's position relative to the eye's bounding
-   box (corners + top/bottom lids) to estimate gaze direction. Uses
-   SPOKEN audio cues + tones for direction changes rather than
-   on-screen text, since you can't read the screen while looking
-   away from it. Cannot detect true ocular torsion (rolling).
-
-   The fixation-stability step reuses the same Welch/FFT pipeline as
-   the HRV analysis above, applied to gaze position instead of pulse
-   intervals, to screen for rhythmic oscillation (nystagmus-like
-   patterns) during a still fixation. This is explicitly NOT a
-   nystagmus diagnosis — consumer webcam frame rates can't resolve
-   fast clinical nystagmus, which needs 100+ fps infrared VNG
-   equipment. The detector was deliberately tuned conservative after
-   testing showed a naive version flagging pure noise as "oscillation"
-   ~20% of the time; the shipped threshold produced zero false
-   positives across 60 synthetic noise-only trials while still
-   catching a synthetic 3 Hz test oscillation, at the cost of missing
-   about a third of weaker synthetic signals — an intentional
-   trade-off given the sensitivity of what a false positive implies.
-   ================================================================ */
-const EOM_SEQUENCE = [
-    { label: 'Look UP', dir: 'up', speech: 'Up' },
-    { label: 'Look RIGHT', dir: 'right', speech: 'Right' },
-    { label: 'Look DOWN', dir: 'down', speech: 'Down' },
-    { label: 'Look LEFT', dir: 'left', speech: 'Left' },
-];
-const CENTER_MS = 900, HOLD_MS = 2200, REACTION_SKIP_MS = 500, FIXATION_MS = 8000;
-
-let eomStream = null, eomRunning = false, eomStepIndex = -1;
-let eomStepResults = [];
-let fixationResult = null;
-const eomVideo = document.getElementById('eom-video');
-const eomStatusText = document.getElementById('eomStatusText');
-const eomGuideRing = document.getElementById('eomGuideRing');
-const eomPromptEl = document.getElementById('eomPrompt');
-const eomChecklist = document.getElementById('eomChecklist');
-
-// --- Audio helpers: speech + tone, so cues work without reading the screen ---
-let sharedAudioCtx = null;
-function speak(text) {
-    try {
-        if (!('speechSynthesis' in window)) return;
-        speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.rate = 1.05;
-        speechSynthesis.speak(utter);
-    } catch (e) { /* speech unavailable — tone + visual prompt still work */ }
-}
-function playTone(freq, durationMs) {
-    try {
-        if (!sharedAudioCtx) sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = sharedAudioCtx.createOscillator(), gain = sharedAudioCtx.createGain();
-        osc.frequency.value = freq;
-        osc.connect(gain); gain.connect(sharedAudioCtx.destination);
-        gain.gain.setValueAtTime(0.15, sharedAudioCtx.currentTime);
-        osc.start();
-        osc.stop(sharedAudioCtx.currentTime + durationMs / 1000);
-    } catch (e) { /* audio unavailable */ }
-}
-
-document.getElementById('eomBtn').addEventListener('click', startEomTest);
-
-async function startEomTest() {
-    const btn = document.getElementById('eomBtn');
-    btn.disabled = true;
-    eomChecklist.style.display = 'none';
-    try {
-        if (!faceLandmarker) { eomStatusText.textContent = "Loading face-tracking model (first run only)..."; await loadFaceLandmarker(); }
-        eomStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 320 }, height: { ideal: 240 } }, audio: false });
-        eomVideo.srcObject = eomStream;
-        await eomVideo.play();
-
-        eomRunning = true; eomStepIndex = 0; eomStepResults = []; fixationResult = null;
-        eomGuideRing.classList.remove('active');
-        runEomStep();
-    } catch (err) {
-        eomStatusText.textContent = "Camera access denied, or the face-tracking model failed to load.";
-        btn.disabled = false;
-    }
-}
-
-function collectGazeFor(durationMs, onDone) {
-    const samples = [];
-    const start = performance.now();
-    function loop() {
-        if (!eomRunning) return;
-        if (eomVideo.readyState >= 2 && faceLandmarker) {
-            const result = faceLandmarker.detectForVideo(eomVideo, performance.now());
-            if (result && result.faceLandmarks && result.faceLandmarks.length > 0) {
-                eomGuideRing.classList.add('active');
-                const gaze = estimateGazeOffset(result.faceLandmarks[0], eomVideo.videoWidth, eomVideo.videoHeight);
-                if (gaze) samples.push({ t: performance.now() - start, dx: gaze.dx, dy: gaze.dy });
-            } else {
-                eomGuideRing.classList.remove('active');
-            }
-        }
-        if (performance.now() - start < durationMs) requestAnimationFrame(loop);
-        else onDone(samples);
-    }
-    requestAnimationFrame(loop);
-}
-
-function runEomStep() {
-    if (eomStepIndex >= EOM_SEQUENCE.length) { runFixationStep(); return; }
-    const step = EOM_SEQUENCE[eomStepIndex];
-
-    // Return-to-center phase — spoken + toned, gives a known reference point
-    // between directions and a clear "get ready" cue before each move.
-    eomPromptEl.textContent = '•';
-    eomStatusText.textContent = `Step ${eomStepIndex + 1} of ${EOM_SEQUENCE.length} — center...`;
-    speak('Center');
-    playTone(440, 100);
-
+    permissionGate.classList.add('hidden');
+    statusPanel.classList.remove('hidden');
+    wavePanel.classList.remove('hidden');
+    metricsPanel.classList.remove('hidden');
+    controlPanel.classList.remove('hidden');
+    resizeAllCanvases();
+
+    const { accelOk, gyroOk } = await startGenericSensors();
+    startDeviceMotionFallback(!accelOk, !gyroOk);
+
+    // If nothing reports data within 2s, flag as unsupported rather than
+    // silently sitting at "not started" forever.
     setTimeout(() => {
-        eomPromptEl.textContent = step.label;
-        eomStatusText.textContent = `Step ${eomStepIndex + 1} of ${EOM_SEQUENCE.length} — listen for the direction`;
-        speak(step.speech);
-        playTone(880, 140);
+      if (!state.accelActive) {
+        setDotStatus('dot-accel', 'err');
+        el('detail-accel').textContent = 'no data received — sensor unsupported or blocked';
+      }
+      if (!state.gyroActive) {
+        setDotStatus('dot-gyro', 'err');
+        el('detail-gyro').textContent = 'no data received — sensor unsupported or blocked';
+      }
+    }, 2000);
 
-        collectGazeFor(HOLD_MS, (samples) => {
-            // Skip the first ~500ms of each hold (reaction time / saccade in
-            // flight) so classification only uses the settled gaze position.
-            const settled = samples.filter(s => s.t >= REACTION_SKIP_MS);
-            const detectedDir = classifyGazeDirection(settled);
-            eomStepResults.push({ instructed: step.dir, detected: detectedDir, match: detectedDir === step.dir });
-            eomStepIndex++;
-            runEomStep();
-        });
-    }, CENTER_MS);
-}
+    requestAnimationFrame(renderLoop);
+  }
 
-function runFixationStep() {
-    eomPromptEl.textContent = '•';
-    eomStatusText.textContent = 'Fixation stability — hold still, look at the center dot';
-    speak('Now hold still and look at the center dot');
-    playTone(440, 150);
+  el('btn-enable-sensors').addEventListener('click', enableSensors);
 
-    setTimeout(() => {
-        collectGazeFor(FIXATION_MS, (samples) => {
-            const settled = samples.filter(s => s.t >= REACTION_SKIP_MS);
-            fixationResult = analyzeFixationOscillation(settled);
-            finishEomTest();
-        });
-    }, 700);
-}
-
-// Iris center position relative to the eye's horizontal/vertical extent
-// (corners + upper/lower lid landmarks), normalized so head distance from
-// camera doesn't matter — only where the iris sits within the eye socket.
-// No longer gates out "narrow aperture" frames: an earlier attempt to skip
-// likely-blink frames via a fixed eyeHeight/eyeWidth threshold ended up also
-// filtering out genuine downward-gaze frames (eyelids narrow naturally when
-// looking down — not a blink), and how much they narrow varies enough by
-// person that no single fixed threshold reliably tells the two apart. A
-// handful of true blink frames within a ~2s hold are instead handled by the
-// median aggregation in classifyGazeDirection below, which already ignores
-// a minority of outlier frames without needing a separate cutoff.
-function estimateGazeOffset(landmarks, w, h) {
-    const px = i => ({ x: landmarks[i].x * w, y: landmarks[i].y * h });
-    const outer = px(33), inner = px(133), upper = px(159), lower = px(145), iris = px(468);
-    const eyeWidth = Math.hypot(outer.x - inner.x, outer.y - inner.y);
-    const eyeHeight = Math.hypot(upper.x - lower.x, upper.y - lower.y);
-    if (eyeWidth <= 0 || eyeHeight <= 0) return null;
-    const midX = (outer.x + inner.x) / 2, midY = (upper.y + lower.y) / 2;
-    return { dx: (iris.x - midX) / eyeWidth, dy: (iris.y - midY) / eyeHeight };
-}
-
-function median(arr) {
-    const sorted = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-function classifyGazeDirection(samples) {
-    if (samples.length < 5) return 'unknown';
-    const medDx = median(samples.map(s => s.dx));
-    const medDy = median(samples.map(s => s.dy));
-    const DEAD_ZONE_X = 0.06, DEAD_ZONE_Y = 0.045;
-    if (Math.abs(medDx) < DEAD_ZONE_X && Math.abs(medDy) < DEAD_ZONE_Y) return 'center';
-    if (Math.abs(medDy) / DEAD_ZONE_Y > Math.abs(medDx) / DEAD_ZONE_X) return medDy < 0 ? 'up' : 'down';
-    // landmarks come from the raw, UNMIRRORED camera frame (the on-screen
-    // preview is flipped for display only). For this eye, the outer/temporal
-    // corner sits at smaller x than the inner/nasal corner, so looking
-    // toward the subject's own right moves the iris toward SMALLER x —
-    // i.e. negative dx. (Previous version had this sign backwards.)
-    return medDx < 0 ? 'right' : 'left';
-}
-
-// Screens gaze-position stability during a still fixation for a rhythmic
-// oscillation pattern, reusing the same Welch/FFT machinery validated
-// against synthetic HRV signals earlier in this file. Uses robust
-// (median/MAD) peak statistics, excludes near-Nyquist edge artifacts, and
-// requires the candidate frequency to show up on BOTH gaze axes before
-// flagging anything — see the section-header comment for the validation
-// process and false-positive tuning behind these specific thresholds.
-function analyzeFixationOscillation(gazeSamples) {
-    if (gazeSamples.length < 20) return null;
-    const tSec = gazeSamples.map(s => s.t / 1000);
-    const dxVals = gazeSamples.map(s => s.dx);
-    const dyVals = gazeSamples.map(s => s.dy);
-    const meanDx = dxVals.reduce((a, b) => a + b, 0) / dxVals.length;
-    const meanDy = dyVals.reduce((a, b) => a + b, 0) / dyVals.length;
-    const rmsJitter = Math.sqrt(gazeSamples.reduce((a, s) => a + ((s.dx - meanDx) ** 2 + (s.dy - meanDy) ** 2), 0) / gazeSamples.length);
-
-    const durationSec = tSec[tSec.length - 1] - tSec[0];
-    const actualFs = gazeSamples.length / durationSec;
-    const fsTarget = Math.max(4, Math.min(10, Math.round(actualFs)));
-    const rx = resampleToUniformRate(tSec, dxVals, fsTarget);
-    const ry = resampleToUniformRate(tSec, dyVals, fsTarget);
-    if (rx.uniform.length < 8 || ry.uniform.length < 8) return { rmsJitter, oscillationDetected: false, dominantFreqHz: null };
-
-    const welchX = computeWelchPSD(rx.uniform, fsTarget);
-    const welchY = computeWelchPSD(ry.uniform, fsTarget);
-    if (!welchX || !welchY) return { rmsJitter, oscillationDetected: false, dominantFreqHz: null };
-
-    function findRobustPeak(welch, fMin, fMax) {
-        const inBand = [];
-        for (let k = 0; k < welch.freqs.length; k++) if (welch.freqs[k] >= fMin && welch.freqs[k] <= fMax) inBand.push(k);
-        if (inBand.length < 4) return null;
-        const vals = inBand.map(k => welch.psd[k]).sort((a, b) => a - b);
-        const median = vals[Math.floor(vals.length / 2)];
-        const mad = vals.map(v => Math.abs(v - median)).sort((a, b) => a - b)[Math.floor(vals.length / 2)] || 0.0001;
-        let bestK = inBand[0], bestVal = -Infinity;
-        inBand.forEach(k => { if (welch.psd[k] > bestVal) { bestVal = welch.psd[k]; bestK = k; } });
-        const robustZ = (bestVal - median) / (mad * 1.4826 || 0.0001);
-        return { freqHz: welch.freqs[bestK], val: bestVal, robustZ };
-    }
-
-    const fMin = 0.5, fMax = (fsTarget / 2) * 0.8;
-    const peakX = findRobustPeak(welchX, fMin, fMax);
-    const peakY = findRobustPeak(welchY, fMin, fMax);
-    let best = null;
-    if (peakX && peakY) best = peakX.robustZ >= peakY.robustZ ? peakX : peakY;
-    else best = peakX || peakY;
-    if (!best) return { rmsJitter, oscillationDetected: false, dominantFreqHz: null };
-
-    const other = best === peakX ? welchY : welchX;
-    let otherNear = 0;
-    for (let k = 0; k < other.freqs.length; k++) if (Math.abs(other.freqs[k] - best.freqHz) <= 0.3) otherNear = Math.max(otherNear, other.psd[k]);
-    const otherVals = [];
-    for (let k = 0; k < other.freqs.length; k++) if (other.freqs[k] >= fMin && other.freqs[k] <= fMax) otherVals.push(other.psd[k]);
-    otherVals.sort((a, b) => a - b);
-    const otherMedian = otherVals[Math.floor(otherVals.length / 2)] || 0;
-    const corroborated = otherNear > otherMedian * 1.5;
-
-    const oscillationDetected = !!(best.robustZ > 25 && corroborated && best.freqHz >= 0.5 && best.freqHz <= 5);
-    return { rmsJitter, oscillationDetected, dominantFreqHz: oscillationDetected ? best.freqHz : null, robustZ: best.robustZ };
-}
-
-function finishEomTest() {
-    eomRunning = false;
-    if (eomStream) { eomStream.getTracks().forEach(t => t.stop()); eomStream = null; }
-    document.getElementById('eomBtn').disabled = false;
-    eomPromptEl.textContent = '—';
-    eomStatusText.textContent = 'Test complete.';
-    eomChecklist.style.display = 'flex';
-
-    const rows = eomStepResults.map((r, i) => [String(i + 1), `Detected gaze matched "${r.instructed}" prompt?`, r.detected === 'unknown' ? 'na' : (r.match ? 'yes' : 'no')]);
-    const allMatched = eomStepResults.length > 0 && eomStepResults.every(r => r.match);
-    rows.push(['5', 'All four directions tracked successfully?', eomStepResults.length === 0 ? 'na' : (allMatched ? 'yes' : 'no')]);
-
-    if (fixationResult) {
-        const stabilityLabel = fixationResult.rmsJitter < 0.02 ? 'yes' : fixationResult.rmsJitter < 0.05 ? 'na' : 'no';
-        rows.push(['6', 'Fixation appeared steady (low positional jitter)?', stabilityLabel]);
-        rows.push(['7', 'Rhythmic oscillation pattern detected during fixation?', fixationResult.oscillationDetected ? 'no' : 'yes']);
-        // Row 7 phrased so "yes" = no concerning pattern found, matching the
-        // Yes/No polarity of every other row in this checklist (yes = good).
+  // ---------- Recording control ----------
+  const btnRecord = el('btn-record');
+  btnRecord.addEventListener('click', () => {
+    state.recording = !state.recording;
+    if (state.recording) {
+      state.recordStart = nowMs();
+      btnRecord.textContent = 'Stop Recording';
+      btnRecord.classList.add('recording');
     } else {
-        rows.push(['6', 'Fixation appeared steady (low positional jitter)?', 'na']);
-        rows.push(['7', 'Rhythmic oscillation pattern detected during fixation?', 'na']);
+      btnRecord.textContent = 'Start Recording';
+      btnRecord.classList.remove('recording');
     }
-    eomChecklist.innerHTML = rows.map(renderCheckRow).join('');
+  });
 
-    if (fixationResult && fixationResult.oscillationDetected) {
-        eomChecklist.innerHTML += `<div class="interp-box amber" style="margin-top:8px;">A rhythmic gaze-position pattern was detected during the fixation hold
-            (~${fixationResult.dominantFreqHz.toFixed(1)} Hz). This is a rough, consumer-camera screening signal —
-            <b>not a nystagmus diagnosis</b> — but if this appears consistently across repeat tests, or if you have
-            any visual symptoms, it's worth mentioning to a clinician.</div>`;
+  // ---------- Simple high-pass filter (removes DC / gravity drift) ----------
+  // One-pole high-pass, ~0.4 Hz cutoff at ~100Hz sample rate — enough to
+  // strip gravity offset and slow drift without eating the cardiac band
+  // (cardiac mechanical content of interest is roughly 1-40 Hz).
+  function makeHighPass(cutoffHz, sampleHz) {
+    const rc = 1 / (2 * Math.PI * cutoffHz);
+    const dt = 1 / sampleHz;
+    const alpha = rc / (rc + dt);
+    let prevIn = { x: 0, y: 0, z: 0 };
+    let prevOut = { x: 0, y: 0, z: 0 };
+    let initialized = false;
+    return function (sample) {
+      if (!initialized) {
+        prevIn = { x: sample.x, y: sample.y, z: sample.z };
+        prevOut = { x: 0, y: 0, z: 0 };
+        initialized = true;
+        return { x: 0, y: 0, z: 0 };
+      }
+      const out = {
+        x: alpha * (prevOut.x + sample.x - prevIn.x),
+        y: alpha * (prevOut.y + sample.y - prevIn.y),
+        z: alpha * (prevOut.z + sample.z - prevIn.z),
+      };
+      prevIn = { x: sample.x, y: sample.y, z: sample.z };
+      prevOut = out;
+      return out;
+    };
+  }
+
+  const hpAccel = makeHighPass(0.5, 100);
+  const hpGyro = makeHighPass(0.5, 100);
+
+  // ---------- Rendering ----------
+  function drawWaveform(ctx, canvas, buffer, filterFn, colorMain, quality) {
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    ctx.clearRect(0, 0, w, h);
+
+    if (buffer.length < 2) return;
+
+    // Apply high-pass to each axis for display
+    const filtered = buffer.map(filterFn);
+
+    // Use signed dominant axis (largest-variance axis) for a more readable trace than pure magnitude
+    let maxVarAxis = 'x', maxVar = -Infinity;
+    ['x', 'y', 'z'].forEach(axis => {
+      const vals = filtered.map(f => f[axis]);
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
+      if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
+    });
+    const dominant = filtered.map(f => f[maxVarAxis]);
+
+    const maxAbs = Math.max(0.01, ...dominant.map(Math.abs));
+    const scale = (h / 2 - 8) / maxAbs;
+    const midY = h / 2;
+
+    // grid midline
+    ctx.strokeStyle = 'rgba(143,167,156,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, midY);
+    ctx.lineTo(w, midY);
+    ctx.stroke();
+
+    // trace
+    ctx.strokeStyle = colorMain;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    const n = dominant.length;
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * w;
+      const y = midY - dominant[i] * scale;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
-    renderReportEomSummary();
-}
+    ctx.stroke();
+
+    // signal quality heuristic: RMS of dominant axis vs a noise-floor guess
+    const rms = Math.sqrt(dominant.reduce((a, b) => a + b * b, 0) / n);
+    return rms;
+  }
+
+  function classifyQuality(rms, kind) {
+    // Rough placeholder thresholds — will be recalibrated against real
+    // device recordings once we have actual test data. Purpose right now
+    // is only to flag "essentially flat / no signal" vs "some signal".
+    if (rms === undefined || isNaN(rms)) return { label: 'no signal', cls: 'none' };
+    const floor = kind === 'accel' ? 0.02 : 0.5;
+    const good = kind === 'accel' ? 0.08 : 2.0;
+    if (rms < floor) return { label: 'flat', cls: 'none' };
+    if (rms < good) return { label: 'weak', cls: 'low' };
+    return { label: 'active', cls: 'high' };
+  }
+
+  let frameCount = 0;
+  const resolvedAccelColor = getComputedStyle(document.documentElement).getPropertyValue('--accel-color').trim() || '#4FD9C4';
+  const resolvedGyroColor = getComputedStyle(document.documentElement).getPropertyValue('--gyro-color').trim() || '#A48CF0';
+
+  function renderLoop() {
+    const rmsAccel = drawWaveform(ctxAccel, canvasAccel, state.accelBuffer, hpAccel, resolvedAccelColor);
+    const rmsGyro = drawWaveform(ctxGyro, canvasGyro, state.gyroBuffer, hpGyro, resolvedGyroColor);
+
+    frameCount++;
+    if (frameCount % 6 === 0) {
+      const qa = classifyQuality(rmsAccel, 'accel');
+      const qg = classifyQuality(rmsGyro, 'gyro');
+      setQualityPill('signal-quality-accel', qa);
+      setQualityPill('signal-quality-gyro', qg);
+
+      el('metric-rms-accel').innerHTML = (rmsAccel !== undefined ? rmsAccel.toFixed(3) : '—') + '<span class="unit"> m/s²</span>';
+      el('metric-rms-gyro').innerHTML = (rmsGyro !== undefined ? rmsGyro.toFixed(2) : '—') + '<span class="unit"> °/s</span>';
+      el('metric-samplerate').innerHTML = Math.round(state.accelHz) + '<span class="unit"> Hz</span>';
+      el('hz-accel').textContent = Math.round(state.accelHz) + ' Hz';
+      el('hz-gyro').textContent = Math.round(state.gyroHz) + ' Hz';
+
+      if (state.recording && state.recordStart) {
+        const elapsed = (nowMs() - state.recordStart) / 1000;
+        const mm = Math.floor(elapsed / 60);
+        const ss = Math.floor(elapsed % 60).toString().padStart(2, '0');
+        el('metric-duration').textContent = mm + ':' + ss;
+      }
+    }
+
+    requestAnimationFrame(renderLoop);
+  }
+
+  function setQualityPill(id, q) {
+    const pill = el(id);
+    pill.textContent = q.label;
+    pill.className = 'confidence ' + q.cls;
+  }
+
+})();
 </script>
+
 </body>
 </html>
