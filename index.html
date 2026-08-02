@@ -1222,13 +1222,41 @@
 
     const badge = el('spectrum-peak-badge');
     if (bandPeakMag > 0) {
-      const bpm = Math.round(bandPeakHz * 60);
-      const ratio = globalPeakMag / Math.max(0.0001, bandPeakMag);
-      badge.textContent = bandPeakHz.toFixed(2) + ' Hz (' + bpm + ' bpm) · band-restricted';
+      // Octave-error correction: sharp transients (taps, and expected AO/AC
+      // cardiac events) throw strong energy into their 2nd harmonic, which
+      // can outweigh the true fundamental within our 0.6-3Hz search band.
+      // Real-device testing (Aug 2, 8-tap sequence) caught this directly:
+      // FFT badge read 148 bpm while the time-domain event detector — now
+      // validated across two independent tap tests at ~10% spread — read
+      // 74 bpm, exactly a 2x octave error. Since the event detector has
+      // real ground-truth validation behind it and the FFT peak doesn't,
+      // cross-check them and defer to the event detector when they
+      // disagree by roughly 2x, rather than trusting the louder FFT bin.
+      let displayHz = bandPeakHz;
+      let octaveCorrected = false;
+      const candidate = getCandidateRateBpm();
+      if (candidate.bpm !== null) {
+        const candidateHz = candidate.bpm / 60;
+        const ratio = bandPeakHz / candidateHz;
+        if (ratio > 1.7 && ratio < 2.3) {
+          displayHz = candidateHz;
+          octaveCorrected = true;
+        } else if (ratio > 0.43 && ratio < 0.59) {
+          displayHz = candidateHz; // FFT found a sub-harmonic instead; same correction, other direction
+          octaveCorrected = true;
+        }
+      }
+      const bpm = Math.round(displayHz * 60);
+      badge.textContent = displayHz.toFixed(2) + ' Hz (' + bpm + ' bpm) · band-restricted' + (octaveCorrected ? ' [octave-corrected]' : '');
       const diagEl = el('spectrum-diag');
       if (diagEl) {
-        diagEl.textContent = 'Unconstrained global peak: ' + globalPeakHz.toFixed(2) + ' Hz (' +
-          ratio.toFixed(1) + '× stronger than in-band peak) — a physiologically impossible global peak that dwarfs the in-band one points to harmonic content or a sensor artifact, not a faster heartbeat.';
+        const ratioTxt = globalPeakMag / Math.max(0.0001, bandPeakMag);
+        let msg = 'Unconstrained global peak: ' + globalPeakHz.toFixed(2) + ' Hz (' +
+          ratioTxt.toFixed(1) + '× stronger than in-band peak) — a physiologically impossible global peak that dwarfs the in-band one points to harmonic content or a sensor artifact, not a faster heartbeat.';
+        if (octaveCorrected) {
+          msg += ' Raw FFT band peak was ' + bandPeakHz.toFixed(2) + ' Hz — corrected using the time-domain event detector rate, since sharp transients commonly throw a stronger 2nd harmonic than the true fundamental into this band.';
+        }
+        diagEl.textContent = msg;
       }
     } else {
       badge.textContent = '— Hz';
