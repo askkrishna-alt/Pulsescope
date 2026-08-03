@@ -395,6 +395,13 @@
   </div>
   <div class="hint" id="spectrum-diag" style="border-left-color: var(--amber); margin-top: 6px;"></div>
   <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+    <span class="panel-title" style="margin-bottom:0;">Autocorrelation Check</span>
+    <span class="confidence none" id="autocorr-pill">collecting…</span>
+  </div>
+  <div class="hint" id="autocorr-hint" style="margin-top:6px;">
+    A second, independent method that checks whether the waveform repeats itself at some interval — unlike the spike detector above, it doesn't require a sharp transient shape, so it can corroborate a real signal that's too smooth to trigger spike detection. Agreement between this and the spectrum badge above is real evidence; disagreement, or a low correlation score, means don't trust either alone.
+  </div>
+  <div style="display:flex; align-items:center; gap:8px; margin-top:10px;">
     <span class="panel-title" style="margin-bottom:0;">Reading Stability</span>
     <span class="confidence none" id="stability-pill">collecting…</span>
   </div>
@@ -1120,6 +1127,49 @@
     return { label: 'unstable — noisy window', cls: 'low' };
   }
 
+  // ---------- Autocorrelation-based periodicity check ----------
+  // Motivated directly by real-device testing (Aug 3, 3-minute recording):
+  // the spike-prominence event detector fired zero times across the full
+  // quiet portion despite a consistent, noise-reactive band-restricted FFT
+  // reading throughout. That detector was validated on sharp tap-like
+  // transients only — a real but smoother/lower-amplitude cardiac signal
+  // could legitimately fail to trigger it. Autocorrelation asks a
+  // different question ("does this waveform repeat itself at some lag?")
+  // that doesn't require a spike shape at all, so it can corroborate (or
+  // fail to corroborate) the FFT reading via a genuinely independent
+  // method rather than the same spectral approach twice.
+  function computeAutocorrelation(buffer, filterFn, sampleHz) {
+    if (buffer.length < 64) return null;
+    const filtered = buffer.map(filterFn);
+    let maxVarAxis = 'x', maxVar = -Infinity;
+    ['x', 'y', 'z'].forEach(axis => {
+      const vals = filtered.map(f => f[axis]);
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
+      if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
+    });
+    const sig = filtered.map(f => f[maxVarAxis]);
+    const n = sig.length;
+    const mean = sig.reduce((a, b) => a + b, 0) / n;
+    const centered = sig.map(v => v - mean);
+    const variance = centered.reduce((a, b) => a + b * b, 0) / n;
+    if (variance < 1e-9) return null;
+
+    // Search lags corresponding to 36-180 bpm (0.33s-1.67s)
+    const minLagSamples = Math.round(sampleHz * 60 / 180);
+    const maxLagSamples = Math.min(n - 1, Math.round(sampleHz * 60 / 36));
+    let bestLag = -1, bestCorr = -Infinity;
+    for (let lag = minLagSamples; lag <= maxLagSamples; lag++) {
+      let sum = 0;
+      for (let i = 0; i < n - lag; i++) sum += centered[i] * centered[i + lag];
+      const corr = (sum / (n - lag)) / variance; // normalized, -1..1
+      if (corr > bestCorr) { bestCorr = corr; bestLag = lag; }
+    }
+    if (bestLag <= 0) return null;
+    const hz = sampleHz / bestLag;
+    return { hz, correlation: bestCorr };
+  }
+
   function classifyQuality(rms, kind) {
     // Rough placeholder thresholds — will be recalibrated against real
     // device recordings once we have actual test data. Purpose right now
@@ -1252,6 +1302,7 @@
     if (bandPeakMag > 0) recordStabilitySample(bandPeakHz);
 
     const badge = el('spectrum-peak-badge');
+    let lastBadgeBpm = null;
     if (bandPeakMag > 0) {
       // Octave-error correction: sharp transients (taps, and expected AO/AC
       // cardiac events) throw strong energy into their 2nd harmonic, which
@@ -1278,6 +1329,7 @@
         }
       }
       const bpm = Math.round(displayHz * 60);
+      lastBadgeBpm = bpm;
       const recentEventAge = detectedEvents.length ? (nowMs() - detectedEvents[detectedEvents.length - 1].t) : Infinity;
       const uncorroborated = recentEventAge > 4000; // no candidate event in the last 4s
       badge.textContent = displayHz.toFixed(2) + ' Hz (' + bpm + ' bpm) · band-restricted' + (octaveCorrected ? ' [octave-corrected]' : '') + (uncorroborated ? ' ⚠' : '');
@@ -1289,13 +1341,41 @@
         if (octaveCorrected) {
           msg += ' Raw FFT band peak was ' + bandPeakHz.toFixed(2) + ' Hz — corrected using the time-domain event detector rate, since sharp transients commonly throw a stronger 2nd harmonic than the true fundamental into this band.';
         }
-        if (uncorroborated) {
+            if (uncorroborated) {
           msg += ' ⚠ No candidate event detected in the last 4s — this spectral reading has no time-domain corroboration and should be treated as unsupported (real-device testing, Aug 2, showed a plausible-looking band-restricted number with zero supporting events turn out to be a noisier window than a rejected one).';
         }
         diagEl.textContent = msg;
       }
     } else {
       badge.textContent = '— Hz';
+    }
+
+    // Independent autocorrelation cross-check (doesn't require spike shape)
+    const autocorr = computeAutocorrelation(state.accelBuffer, hpAccel, ACTUAL_SAMPLE_HZ);
+    const autocorrPill = el('autocorr-pill');
+    const autocorrHint = el('autocorr-hint');
+    if (autocorrPill && autocorr) {
+      const acBpm = Math.round(autocorr.hz * 60);
+      let cls = 'none', label = '';
+      if (autocorr.correlation > 0.5) { cls = 'high'; label = 'strong periodicity'; }
+      else if (autocorr.correlation > 0.25) { cls = 'medium'; label = 'weak periodicity'; }
+      else { cls = 'low'; label = 'no periodicity'; }
+      autocorrPill.textContent = label + ' — ' + acBpm + ' bpm (r=' + autocorr.correlation.toFixed(2) + ')';
+      autocorrPill.className = 'confidence ' + cls;
+      if (autocorrHint && lastBadgeBpm !== null) {
+        const ratio2 = acBpm / lastBadgeBpm;
+        const agree = ratio2 > 0.85 && ratio2 < 1.18;
+        if (autocorr.correlation > 0.25 && agree) {
+          autocorrHint.innerHTML = '<strong style="color:var(--trace)">Agrees with spectrum badge</strong> — two independent methods landing on the same rate is real corroboration, regardless of what the spike detector shows.';
+        } else if (autocorr.correlation <= 0.25) {
+          autocorrHint.textContent = 'Correlation too low to trust this as periodic — treat both this and the spectrum badge as unsupported right now.';
+        } else {
+          autocorrHint.textContent = 'Disagrees with the spectrum badge (' + lastBadgeBpm + ' bpm) — the two methods aren\'t confirming each other, so neither should be trusted alone yet.';
+        }
+      }
+    } else if (autocorrPill) {
+      autocorrPill.textContent = 'collecting…';
+      autocorrPill.className = 'confidence none';
     }
   }
 
