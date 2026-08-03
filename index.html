@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mobile SCG Universal Monitor</title>
+    <title>Mobile SCG & Gemini Core Monitor</title>
     <style>
         :root {
-            --bg-color: #121212;
-            --card-color: #1e1e1e;
+            --bg-color: #0c0c0e;
+            --card-color: #16161a;
             --accent-color: #00e676;
             --text-color: #ffffff;
             --alert-color: #ff1744;
+            --border-color: #24242b;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -28,11 +29,29 @@
             background: var(--card-color);
             padding: 20px;
             border-radius: 16px;
-            box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.7);
             box-sizing: border-box;
         }
-        h1 { font-size: 1.4rem; text-align: center; margin-top: 0; color: var(--accent-color); }
-        .instructions { font-size: 0.85rem; color: #aaaaaa; margin-bottom: 15px; line-height: 1.4; }
+        h1 { font-size: 1.3rem; text-align: center; margin-top: 0; color: var(--accent-color); letter-spacing: 0.5px; }
+        .instructions { font-size: 0.8rem; color: #aaaaaa; margin-bottom: 15px; line-height: 1.45; background: #1e1e24; padding: 10px; border-radius: 8px; }
+        
+        .api-section {
+            margin-bottom: 15px;
+        }
+        label { display: block; font-size: 0.75rem; color: #aaaaaa; text-transform: uppercase; margin-bottom: 5px; font-weight: bold; }
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            background: #0c0c0e;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+        input[type="password"]:focus { border-color: var(--accent-color); outline: none; }
+
         .dashboard {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -40,43 +59,73 @@
             margin-bottom: 15px;
         }
         .metric-box {
-            background: #2a2a2a;
+            background: #1e1e24;
             padding: 12px;
             border-radius: 8px;
             text-align: center;
+            border: 1px solid var(--border-color);
         }
-        .metric-label { font-size: 0.75rem; color: #aaaaaa; text-transform: uppercase; }
-        .metric-value { font-size: 1.6rem; font-weight: bold; color: var(--accent-color); margin-top: 5px; }
+        .metric-label { font-size: 0.7rem; color: #999; text-transform: uppercase; font-weight: bold; }
+        .metric-value { font-size: 1.5rem; font-weight: bold; color: var(--accent-color); margin-top: 5px; }
+        
         .btn {
             width: 100%;
-            padding: 14px;
+            padding: 15px;
             font-size: 1rem;
             font-weight: bold;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
             margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .btn-start { background-color: var(--accent-color); color: #000; }
+        .btn-start:disabled { background-color: #333 !important; color: #777 !important; cursor: not-allowed; }
         .btn-stop { background-color: var(--alert-color); color: #fff; display: none; }
         .btn-export { background-color: #2979ff; color: #fff; display: none; }
-        .status { text-align: center; font-weight: bold; margin: 10px 0; min-height: 24px; font-size: 0.95rem; }
+        
+        .status { text-align: center; font-weight: bold; margin: 10px 0; min-height: 24px; font-size: 0.9rem; }
         canvas {
             width: 100%;
-            height: 220px;
-            background-color: #050505;
+            height: 200px;
+            background-color: #050507;
             border-radius: 8px;
-            border: 1px solid #333;
+            border: 1px solid var(--border-color);
+            margin-bottom: 15px;
+        }
+        
+        .console-log-title { font-size: 0.75rem; color: #ff3d00; text-transform: uppercase; font-weight: bold; margin-bottom: 5px; width: 100%; text-align: left;}
+        .console-box {
+            width: 100%;
+            height: 140px;
+            background: #050507;
+            border: 1px solid #332222;
+            border-radius: 8px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.75rem;
+            color: #ff5252;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow-y: scroll;
+            white-space: pre-wrap;
+            word-break: break-all;
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Mobile SCG Universal Monitor</h1>
+    <h1>Mobile SCG & Gemini Diagnostic</h1>
+    
     <div class="instructions">
-        <strong>Protocol:</strong> Place bare phone screen-up on your chest. Tap Initialize, grant permission if prompted, breathe out fully and hold still!
+        <strong>Protocol:</strong> Place bare phone screen-up on your chest. Enter your Google Gemini Key, tap Initialize, grant permission instantly, breathe out fully and stay still.
+    </div>
+
+    <div class="api-section">
+        <label for="apiKeyInput">Google AI (Gemini) API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="AIzaSy..." autocomplete="off">
     </div>
 
     <div class="dashboard">
@@ -96,6 +145,9 @@
 
     <div id="statusUpdate" class="status">Ready</div>
     <canvas id="scgChart"></canvas>
+    
+    <div class="console-log-title">On-Screen Debug Console Log</div>
+    <div id="consoleBox" class="console-box">System Initialized. Awaiting user interaction...</div>
 </div>
 
 <script>
@@ -106,6 +158,7 @@
     const timerVal = document.getElementById('timerVal');
     const bpmVal = document.getElementById('bpmVal');
     const canvas = document.getElementById('scgChart');
+    const consoleBox = document.getElementById('consoleBox');
     const ctx = canvas.getContext('2d');
 
     let isListening = false;
@@ -127,29 +180,41 @@
     const minPeakDistanceSamples = targetSampleRate * 0.55; 
     let dynamicThreshold = 0.05; 
 
-    // --- IIR Butterworth Bandpass Filter (1 Hz - 30 Hz @ 100 Hz Sampling) ---
+    // Correctly defined IIR Filter Shift Arrays
     const b = [0.1215, 0, -0.2431, 0, 0.1215];
     const a = [1.0000, -2.1215, 1.9542, -0.8715, 0.1856];
     let x = [0, 0, 0, 0, 0];
     let y = [0, 0, 0, 0, 0];
 
+    // --- On-Screen Debug Console Helper ---
+    function logDebug(message, isError = false) {
+        const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
+        const logMsg = `[${timestamp}] ${isError ? 'ERROR: ' : ''}${message}\n`;
+        consoleBox.innerText += logMsg;
+        consoleBox.scrollTop = consoleBox.scrollHeight;
+        if (isError) {
+            console.error(message);
+        } else {
+            console.log(message);
+        }
+    }
+
     function processSignal(rawValue) {
         x.unshift(rawValue);
-        x.pop();
+        if (x.length > 5) x.pop();
 
         let filteredValue = (b[0] * x[0]) + (b[1] * x[1]) + (b[2] * x[2]) + (b[3] * x[3]) + (b[4] * x[4])
-                            - (a[1] * y[0]) - (a[2] * y[1]) - (a[3] * y[2]) - (a[4] * y[3]);
+                            - (a[1] * y[1]) - (a[2] * y[2]) - (a[3] * y[3]) - (a[4] * y[4]);
 
         y.unshift(filteredValue);
-        y.pop();
+        if (y.length > 5) y.pop();
 
         return filteredValue;
     }
 
-    // --- High-Performance Canvas Graphic Loop ---
     function resizeCanvas() {
         canvas.width = canvas.clientWidth * window.devicePixelRatio;
-        canvas.height = canvas.clientHeight * window.devicePixelRatio;
+        canvas.height = 200 * window.devicePixelRatio;
         ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     }
     window.addEventListener('resize', resizeCanvas);
@@ -158,17 +223,16 @@
     function drawGraph() {
         ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
         
-        ctx.strokeStyle = '#222222';
+        ctx.strokeStyle = '#22222b';
         ctx.beginPath();
-        ctx.moveTo(0, canvas.clientHeight / 2);
-        ctx.lineTo(canvas.clientWidth, canvas.clientHeight / 2);
+        ctx.moveTo(0, 100); 
+        ctx.lineTo(canvas.clientWidth, 100);
         ctx.stroke();
 
         const step = canvas.clientWidth / bufferLength;
-        const midY = canvas.clientHeight / 2;
+        const midY = 100;
         const scale = 250; 
 
-        // Primary Green Stream
         ctx.strokeStyle = '#00e676';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -180,12 +244,10 @@
         }
         ctx.stroke();
 
-        // Red Peak Triangle Overlay
         for (let i = 0; i < markerBuffer.length; i++) {
             if (markerBuffer[i] === true) {
                 let xPos = i * step;
                 let yPos = midY - (dataBuffer[i] * scale) - 12;
-                
                 ctx.fillStyle = '#ff1744';
                 ctx.beginPath();
                 ctx.moveTo(xPos, yPos);
@@ -207,68 +269,3 @@
         }
 
         let historicalLength = dataBuffer.length;
-        let p0 = dataBuffer[historicalLength - 3];
-        let p1 = dataBuffer[historicalLength - 2]; 
-        let p2 = dataBuffer[historicalLength - 1];
-
-        if (p1 > p0 && p1 > p2 && p1 > (dynamicThreshold * 0.70)) {
-            if ((sampleCounter - lastPeakIndex) > minPeakDistanceSamples) {
-                isPeakDetected = true;
-                lastPeakIndex = sampleCounter;
-            }
-        }
-        return isPeakDetected;
-    }
-
-    function finalizeBPMCalculation() {
-        let detectedTimestamps = [];
-        sessionLog.forEach(sample => {
-            if (sample.isPeak === true) {
-                detectedTimestamps.push(parseFloat(sample.time));
-            }
-        });
-
-        let filteredTimestamps = detectedTimestamps.filter(t => t > 2000);
-
-        if (filteredTimestamps.length >= 3) {
-            let intervals = [];
-            for (let i = 1; i < filteredTimestamps.length; i++) {
-                intervals.push(filteredTimestamps[i] - filteredTimestamps[i-1]);
-            }
-            let avgIntervalMs = intervals.reduce((s, c) => s + c, 0) / intervals.length;
-            let calculatedBpm = Math.round(60000 / avgIntervalMs);
-
-            if (calculatedBpm >= 45 && calculatedBpm <= 120) {
-                bpmVal.textContent = calculatedBpm + " BPM";
-                return;
-            }
-        }
-        bpmVal.textContent = "-- BPM";
-    }
-
-    function handleDeviceMotion(event) {
-        if (!isListening) return;
-
-        let rawZ = 0;
-        if (event.accelerationWithoutGravity && event.accelerationWithoutGravity.z !== null) {
-            rawZ = event.accelerationWithoutGravity.z;
-        } else if (event.acceleration && event.acceleration.z !== null) {
-            rawZ = event.acceleration.z; 
-        } else if (event.className === "DeviceMotionEvent" || (event.acceleration === null && event.accelerationWithoutGravity === null)) {
-            // Some browsers bake gravity directly into the default alpha/beta/gamma raw structures
-            rawZ = event.accelerationIncludingGravity ? event.accelerationIncludingGravity.z - 9.8 : 0;
-        }
-
-        let relativeTime = performance.now() - startTime;
-        let filteredZ = processSignal(rawZ);
-
-        dataBuffer.push(filteredZ);
-        dataBuffer.shift();
-
-        let peakStatus = performRealTimePeakDetection(filteredZ);
-
-        markerBuffer.push(peakStatus);
-        markerBuffer.shift();
-
-        sessionLog.push({
-            time: relativeTime.toFixed(1),
