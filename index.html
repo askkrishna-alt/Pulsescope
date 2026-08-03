@@ -34,100 +34,35 @@
             box-sizing: border-box; 
         } 
         h1 { 
-            font-size: 1.3rem; 
-            text-align: center; 
-            margin-top: 0; 
-            color: var(--accent-color); 
-            letter-spacing: 0.5px; 
+            font-size: 1.3rem; text-align: center; margin-top: 0; color: var(--accent-color); letter-spacing: 0.5px; 
         } 
         .instructions { 
-            font-size: 0.8rem; 
-            color: #aaaaaa; 
-            margin-bottom: 15px; 
-            line-height: 1.45; 
-            background: #1e1e24; 
-            padding: 10px; 
-            border-radius: 8px; 
+            font-size: 0.8rem; color: #aaaaaa; margin-bottom: 15px; line-height: 1.45; background: #1e1e24; padding: 10px; border-radius: 8px; 
         } 
         .dashboard { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 10px; 
-            margin-bottom: 15px; 
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; 
         } 
         .metric-box { 
-            background: #1e1e24; 
-            padding: 12px; 
-            border-radius: 8px; 
-            text-align: center; 
-            border: 1px solid var(--border-color); 
+            background: #1e1e24; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid var(--border-color); 
         } 
         .metric-label { 
-            font-size: 0.7rem; 
-            color: #999; 
-            text-transform: uppercase; 
-            font-weight: bold; 
+            font-size: 0.7rem; color: #999; text-transform: uppercase; font-weight: bold; 
         } 
         .metric-value { 
-            font-size: 1.5rem; 
-            font-weight: bold; 
-            color: var(--accent-color); 
-            margin-top: 5px; 
+            font-size: 1.5rem; font-weight: bold; color: var(--accent-color); margin-top: 5px; 
         } 
         .btn { 
-            width: 100%; 
-            padding: 15px; 
-            font-size: 1rem; 
-            font-weight: bold; 
-            border: none; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            transition: all 0.2s ease; 
-            margin-bottom: 10px; 
-            text-transform: uppercase; 
-            letter-spacing: 0.5px; 
+            width: 100%; padding: 15px; font-size: 1rem; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s ease; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; 
         } 
-        .btn-start { 
-            background-color: var(--accent-color); 
-            color: #000; 
-        } 
-        .btn-stop { 
-            background-color: var(--alert-color); 
-            color: #fff; 
-            display: none; 
-        } 
-        .btn-export { 
-            background-color: #2979ff; 
-            color: #fff; 
-            display: none; 
-        } 
-        .status { 
-            text-align: center; 
-            font-weight: bold; 
-            margin: 10px 0; 
-            min-height: 24px; 
-            font-size: 0.9rem; 
-        } 
+        .btn-start { background-color: var(--accent-color); color: #000; } 
+        .btn-stop { background-color: var(--alert-color); color: #fff; display: none; } 
+        .btn-export { background-color: #2979ff; color: #fff; display: none; } 
+        .status { text-align: center; font-weight: bold; margin: 10px 0; min-height: 24px; font-size: 0.9rem; } 
         canvas { 
-            width: 100%; 
-            height: 200px; 
-            background-color: #050507; 
-            border-radius: 8px; 
-            border: 1px solid var(--border-color); 
-            margin-bottom: 15px; 
+            width: 100%; height: 200px; background-color: #050507; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 15px; 
         } 
         .summary-box { 
-            width: 100%; 
-            background: #050507; 
-            border: 1px solid #223322; 
-            border-radius: 8px; 
-            font-family: monospace; 
-            font-size: 0.8rem; 
-            color: #00ff00; 
-            padding: 12px; 
-            box-sizing: border-box; 
-            min-height: 80px;
-            white-space: pre-wrap; 
+            width: 100%; background: #050507; border: 1px solid #223322; border-radius: 8px; font-family: monospace; font-size: 0.8rem; color: #00ff00; padding: 12px; box-sizing: border-box; min-height: 80px; white-space: pre-wrap; 
         } 
     </style> 
 </head> 
@@ -182,11 +117,11 @@
         const minPeakDistanceSamples = targetSampleRate * 0.55; 
         let dynamicThreshold = 0.05; 
 
-        // IIR Signal Processing Filters
+        // IIR Signal Processing Filters - Repaired arrays
         const b = [0.1215, 0, -0.2431, 0, 0.1215]; 
         const a = [1.0000, -2.1215, 1.9542, -0.8715, 0.1856]; 
-        let x =; 
-        let y =; 
+        let x = [0, 0, 0, 0, 0]; 
+        let y = [0, 0, 0, 0, 0]; 
         let peakTimestamps = [];
 
         function processSignal(rawValue) { 
@@ -272,3 +207,22 @@
             if (peakTimestamps.length < 2) return;
             const modernPeaks = peakTimestamps.slice(-4);
             let intervalsSum = 0;
+            for(let i = 1; i < modernPeaks.length; i++) {
+                intervalsSum += (modernPeaks[i] - modernPeaks[i-1]);
+            }
+            const avgIntervalSeconds = (intervalsSum / (modernPeaks.length - 1)) / 1000;
+            const bpm = Math.round(60 / avgIntervalSeconds);
+            if (bpm >= 45 && bpm <= 140) {
+                bpmVal.innerText = `${bpm} BPM`;
+            }
+        }
+
+        function handleMotion(event) {
+            if (!isListening) return;
+            const zAcc = event.accelerationIncludingGravity ? event.accelerationIncludingGravity.z : (event.acceleration ? event.acceleration.z : 0);
+            if (zAcc === null || zAcc === undefined) return;
+
+            const filteredValue = processSignal(zAcc);
+            performRealTimePeakDetection(filteredValue);
+
+            sessionLog.push({
