@@ -3,7 +3,7 @@
 <head> 
     <meta charset="UTF-8"> 
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> 
-    <title>Mobile SCG & Gemini Core Monitor</title> 
+    <title>Mobile SCG Heart Monitor</title> 
     <style> 
         :root { 
             --bg-color: #0c0c0e; 
@@ -49,31 +49,6 @@
             padding: 10px; 
             border-radius: 8px; 
         } 
-        .api-section { 
-            margin-bottom: 15px; 
-        } 
-        label { 
-            display: block; 
-            font-size: 0.75rem; 
-            color: #aaaaaa; 
-            text-transform: uppercase; 
-            margin-bottom: 5px; 
-            font-weight: bold; 
-        } 
-        input[type="password"] { 
-            width: 100%; 
-            padding: 12px; 
-            background: #0c0c0e; 
-            border: 1px solid var(--border-color); 
-            border-radius: 8px; 
-            color: #fff; 
-            font-size: 0.9rem; 
-            box-sizing: border-box; 
-        } 
-        input[type="password"]:focus { 
-            border-color: var(--accent-color); 
-            outline: none; 
-        } 
         .dashboard { 
             display: grid; 
             grid-template-columns: 1fr 1fr; 
@@ -116,11 +91,6 @@
             background-color: var(--accent-color); 
             color: #000; 
         } 
-        .btn-start:disabled { 
-            background-color: #333 !important; 
-            color: #777 !important; 
-            cursor: not-allowed; 
-        } 
         .btn-stop { 
             background-color: var(--alert-color); 
             color: #fff; 
@@ -146,59 +116,43 @@
             border: 1px solid var(--border-color); 
             margin-bottom: 15px; 
         } 
-        .console-log-title { 
-            font-size: 0.75rem; 
-            color: #ff3d00; 
-            text-transform: uppercase; 
-            font-weight: bold; 
-            margin-bottom: 5px; 
+        .summary-box { 
             width: 100%; 
-            text-align: left;
-        } 
-        .console-box { 
-            width: 100%; 
-            height: 140px; 
             background: #050507; 
-            border: 1px solid #332222; 
+            border: 1px solid #223322; 
             border-radius: 8px; 
-            font-family: 'Courier New', Courier, monospace; 
-            font-size: 0.75rem; 
-            color: #ff5252; 
-            padding: 10px; 
+            font-family: monospace; 
+            font-size: 0.8rem; 
+            color: #00ff00; 
+            padding: 12px; 
             box-sizing: border-box; 
-            overflow-y: scroll; 
+            min-height: 80px;
             white-space: pre-wrap; 
-            word-break: break-all; 
         } 
     </style> 
 </head> 
 <body> 
     <div class="container"> 
-        <h1>Mobile SCG & Gemini Diagnostic</h1> 
+        <h1>Mobile SCG Monitor</h1> 
         <div class="instructions"> 
-            <strong>Protocol:</strong> Place bare phone screen-up on your chest. Enter your Google Gemini Key, tap Initialize, grant permission instantly, breathe out fully and stay still. 
-        </div> 
-        <div class="api-section"> 
-            <label for="apiKeyInput">Google AI (Gemini) API Key</label> 
-            <input type="password" id="apiKeyInput" placeholder="AIzaSy..." autocomplete="off"> 
+            <strong>Protocol:</strong> Place bare phone screen-up flat on your chest. Tap Start Session, grant motion permissions immediately when prompted, breathe out gently, and lie completely still. 
         </div> 
         <div class="dashboard"> 
             <div class="metric-box"> 
-                <div class="metric-label">Timer Status</div> 
+                <div class="metric-label">Time Remaining</div> 
                 <div id="timerVal" class="metric-value">15s</div> 
             </div> 
             <div class="metric-box"> 
-                <div class="metric-label">Estimated HR</div> 
+                <div class="metric-label">Live Heart Rate</div> 
                 <div id="bpmVal" class="metric-value">-- BPM</div> 
             </div> 
         </div> 
-        <button id="startBtn" class="btn btn-start">Initialize Session</button> 
-        <button id="stopBtn" class="btn btn-stop">Emergency Cancel</button> 
-        <button id="exportBtn" class="btn btn-export">Export Session CSV</button> 
-        <div id="statusUpdate" class="status">Ready</div> 
+        <button id="startBtn" class="btn btn-start">Start Session</button> 
+        <button id="stopBtn" class="btn btn-stop">Cancel Test</button> 
+        <button id="exportBtn" class="btn btn-export">Download Data CSV</button> 
+        <div id="statusUpdate" class="status">Ready to Scan</div> 
         <canvas id="scgChart"></canvas> 
-        <div class="console-log-title">On-Screen Debug Console Log</div> 
-        <div id="consoleBox" class="console-box">System Initialized. Awaiting user interaction...</div> 
+        <div id="summaryBox" class="summary-box">Awaiting session completion... Local data tracking engine active.</div> 
     </div> 
 
     <script> 
@@ -209,7 +163,7 @@
         const timerVal = document.getElementById('timerVal'); 
         const bpmVal = document.getElementById('bpmVal'); 
         const canvas = document.getElementById('scgChart'); 
-        const consoleBox = document.getElementById('consoleBox'); 
+        const summaryBox = document.getElementById('summaryBox'); 
         const ctx = canvas.getContext('2d'); 
 
         let isListening = false; 
@@ -228,25 +182,12 @@
         const minPeakDistanceSamples = targetSampleRate * 0.55; 
         let dynamicThreshold = 0.05; 
 
-        // Correctly defined IIR Filter Shift Arrays 
+        // IIR Signal Processing Filters
         const b = [0.1215, 0, -0.2431, 0, 0.1215]; 
         const a = [1.0000, -2.1215, 1.9542, -0.8715, 0.1856]; 
         let x =; 
         let y =; 
         let peakTimestamps = [];
-
-        // --- On-Screen Debug Console Helper --- 
-        function logDebug(message, isError = false) { 
-            const timestamp = new Date().toISOString().split('T')[1].slice(0, -1); 
-            const logMsg = `[${timestamp}] ${isError ? 'ERROR: ' : ''}${message}\n`; 
-            consoleBox.innerText += logMsg; 
-            consoleBox.scrollTop = consoleBox.scrollHeight; 
-            if (isError) { 
-                console.error(message); 
-            } else { 
-                console.log(message); 
-            } 
-        } 
 
         function processSignal(rawValue) { 
             x.unshift(rawValue); 
@@ -279,3 +220,55 @@
 
             ctx.strokeStyle = '#00e676'; 
             ctx.lineWidth = 2; 
+            ctx.beginPath(); 
+            for (let i = 0; i < dataBuffer.length; i++) { 
+                let xPos = i * step; 
+                let yPos = midY - (dataBuffer[i] * scale); 
+                if (i === 0) ctx.moveTo(xPos, yPos); 
+                else ctx.lineTo(xPos, yPos); 
+            } 
+            ctx.stroke(); 
+
+            for (let i = 0; i < markerBuffer.length; i++) { 
+                if (markerBuffer[i] === true) { 
+                    let xPos = i * step; 
+                    let yPos = midY - (dataBuffer[i] * scale) - 12; 
+                    ctx.fillStyle = '#ff1744'; 
+                    ctx.beginPath(); 
+                    ctx.moveTo(xPos, yPos); 
+                    ctx.lineTo(xPos - 5, yPos + 10); 
+                    ctx.lineTo(xPos + 5, yPos + 10); 
+                    ctx.closePath(); 
+                    ctx.fill(); 
+                } 
+            } 
+            if(isListening) {
+                animationFrameId = requestAnimationFrame(drawGraph); 
+            }
+        } 
+
+        function performRealTimePeakDetection(currentFilteredVal) { 
+            sampleCounter++; 
+            let isPeakDetected = false; 
+            
+            if (sampleCounter > targetSampleRate * 2 && Math.abs(currentFilteredVal) > dynamicThreshold) { 
+                dynamicThreshold = (dynamicThreshold * 0.98) + (Math.abs(currentFilteredVal) * 0.02); 
+            } 
+
+            dataBuffer.shift();
+            dataBuffer.push(currentFilteredVal);
+            markerBuffer.shift();
+
+            if (currentFilteredVal > dynamicThreshold && (sampleCounter - lastPeakIndex) > minPeakDistanceSamples) {
+                isPeakDetected = true;
+                lastPeakIndex = sampleCounter;
+                peakTimestamps.push(Date.now());
+                calculateBPM();
+            }
+            markerBuffer.push(isPeakDetected);
+        } 
+
+        function calculateBPM() {
+            if (peakTimestamps.length < 2) return;
+            const modernPeaks = peakTimestamps.slice(-4);
+            let intervalsSum = 0;
