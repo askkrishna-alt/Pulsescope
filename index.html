@@ -1269,7 +1269,31 @@
       if (corr > bestCorr) { bestCorr = corr; bestLag = lag; }
     }
     if (bestLag <= 0) return null;
-    const hz = sampleHz / bestLag;
+
+    // Subharmonic correction: a signal truly periodic at lag T necessarily
+    // also correlates well at 2T, 3T, etc (repeating every T seconds means
+    // repeating every 2T seconds too, trivially) — so the single-highest-
+    // correlation lag in the search range can land on a whole multiple of
+    // the true period instead of the period itself. Real-device testing
+    // (Aug 4, two placements) showed exactly this: readings flip-flopping
+    // between ~86-90 bpm and ~43-46 bpm, almost precisely a 2:1 ratio.
+    // Fix: if half the detected lag is still in range and its correlation
+    // is close to the best one found, prefer the shorter lag — the true
+    // fundamental is always the shortest valid repeating unit, so ties
+    // should resolve toward higher frequency, not lower.
+    let finalLag = bestLag;
+    const halfLag = Math.round(bestLag / 2);
+    if (halfLag >= minLagSamples) {
+      let sumHalf = 0;
+      for (let i = 0; i < n - halfLag; i++) sumHalf += centered[i] * centered[i + halfLag];
+      const corrHalf = (sumHalf / (n - halfLag)) / variance;
+      if (corrHalf >= bestCorr * 0.85) {
+        finalLag = halfLag;
+        bestCorr = corrHalf;
+      }
+    }
+
+    const hz = sampleHz / finalLag;
     return { hz, correlation: bestCorr };
   }
 
