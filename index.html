@@ -1230,7 +1230,7 @@
       if (vals[i] > threshold && vals[i] >= vals[i - 1] && vals[i] >= vals[i + 1]) {
         detectedEvents.push({ t, amplitude: vals[i] });
         if (detectedEvents.length > 40) detectedEvents.shift();
-        captureBeatSnippet(t);
+        queueBeatSnippet(t);
         break; // one event per scan pass is enough at this refresh rate
       }
     }
@@ -1248,6 +1248,37 @@
   const beatSnippets = [];
   const SNIPPET_PRE_MS = 300, SNIPPET_POST_MS = 600, SNIPPET_POINTS = 90;
   const MAX_SNIPPETS = 30;
+
+  const pendingSnippetCaptures = []; // eventT values awaiting enough future buffer data
+
+  function queueBeatSnippet(eventT) {
+    pendingSnippetCaptures.push(eventT);
+  }
+
+  // Called every frame: an event needs SNIPPET_POST_MS of buffer *after*
+  // its own timestamp before a window can be extracted, but events are
+  // detected the moment they happen (from the newest samples), so that
+  // trailing data doesn't exist yet at detection time. This drains the
+  // queue once enough new samples have arrived to cover it — fixes a bug
+  // where the original synchronous call always failed silently (real-
+  // device testing, Aug 5: stuck at "1 beats" for a full 5-minute session).
+  function processPendingSnippets() {
+    const times = state.accelSampleTimes;
+    if (!times.length) return;
+    const latestT = times[times.length - 1];
+    for (let i = pendingSnippetCaptures.length - 1; i >= 0; i--) {
+      const eventT = pendingSnippetCaptures[i];
+      if (latestT >= eventT + SNIPPET_POST_MS) {
+        captureBeatSnippet(eventT);
+        pendingSnippetCaptures.splice(i, 1);
+      }
+    }
+    // Safety: drop anything that's aged out without ever getting enough
+    // trailing data (e.g. recording stopped, buffer trimmed past it).
+    while (pendingSnippetCaptures.length && latestT - pendingSnippetCaptures[0] > SNIPPET_POST_MS + 2000) {
+      pendingSnippetCaptures.shift();
+    }
+  }
 
   function captureBeatSnippet(eventT) {
     const times = state.accelSampleTimes;
@@ -1556,6 +1587,7 @@
     const rmsAccel = drawWaveform(ctxAccel, canvasAccel, state.accelBuffer, hpAccel, resolvedAccelColor);
     const rmsGyro = drawWaveform(ctxGyro, canvasGyro, state.gyroBuffer, hpGyro, resolvedGyroColor);
     runBeatDetection();
+    processPendingSnippets();
     drawEventMarkers();
     updateSettleState();
 
