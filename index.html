@@ -481,6 +481,20 @@
   </div>
 </div>
 
+<!-- Ensemble-averaged mean pulse wave -->
+<div class="panel hidden" id="meanwave-panel">
+  <div class="panel-title">
+    <span>Mean Pulse Wave (ensemble-averaged)</span>
+    <span class="hz-badge" id="meanwave-count">0 beats</span>
+  </div>
+  <div class="wave-wrap" style="height:130px;">
+    <canvas id="canvas-meanwave"></canvas>
+  </div>
+  <div class="hint">
+    Every detected beat aligned on its timestamp and averaged together. Real repeating structure reinforces; random noise mostly cancels out — this is the honest way to check whether a consistent per-beat shape (comparable to published AO/AC-style SCG morphology) is actually present, rather than eyeballing a single busy raw window. Needs at least 8 beats to be worth looking at; more is better.
+  </div>
+</div>
+
 <!-- Record control -->
 <div class="panel hidden" id="control-panel">
   <button class="btn btn-primary" id="btn-record">Start Recording</button>
@@ -775,6 +789,7 @@
     el('spectrum-panel').classList.remove('hidden');
     metricsPanel.classList.remove('hidden');
     el('rhythm-panel').classList.remove('hidden');
+    el('meanwave-panel').classList.remove('hidden');
     controlPanel.classList.remove('hidden');
     resizeAllCanvases();
 
@@ -1215,9 +1230,106 @@
       if (vals[i] > threshold && vals[i] >= vals[i - 1] && vals[i] >= vals[i + 1]) {
         detectedEvents.push({ t, amplitude: vals[i] });
         if (detectedEvents.length > 40) detectedEvents.shift();
+        captureBeatSnippet(t);
         break; // one event per scan pass is enough at this refresh rate
       }
     }
+  }
+
+  // ---------- Mean pulse wave (ensemble averaging) ----------
+  // Same technique behind published ensemble-averaged SCG figures: align
+  // every detected beat on its timestamp and average them together. Real
+  // repeating structure reinforces across beats; random noise mostly
+  // cancels out. Uses the display-quality bandpass (hpAccel, 0.7-25Hz)
+  // rather than the more aggressively low-passed beat-detection filter,
+  // since preserving sharp transient shape detail is the whole point here
+  // — beatFilterAccel is tuned for reliable spike detection, not for
+  // preserving the fine shape of the spike itself.
+  const beatSnippets = [];
+  const SNIPPET_PRE_MS = 300, SNIPPET_POST_MS = 600, SNIPPET_POINTS = 90;
+  const MAX_SNIPPETS = 30;
+
+  function captureBeatSnippet(eventT) {
+    const times = state.accelSampleTimes;
+    const windowStart = eventT - SNIPPET_PRE_MS;
+    const windowEnd = eventT + SNIPPET_POST_MS;
+    if (times.length < 2 || times[0] > windowStart || times[times.length - 1] < windowEnd) return; // not enough buffer history yet
+
+    const filtered = state.accelBuffer.map(hpAccel);
+    let maxVarAxis = 'x', maxVar = -Infinity;
+    ['x', 'y', 'z'].forEach(axis => {
+      const vals = filtered.map(f => f[axis]);
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+      const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
+      if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
+    });
+    const dominant = filtered.map(f => f[maxVarAxis]);
+
+    // Linear interpolation to a fixed-length, evenly-spaced snippet, since
+    // real sample timing isn't perfectly uniform.
+    const snippet = new Array(SNIPPET_POINTS);
+    for (let p = 0; p < SNIPPET_POINTS; p++) {
+      const targetT = windowStart + (p / (SNIPPET_POINTS - 1)) * (windowEnd - windowStart);
+      let lo = 0;
+      while (lo < times.length - 1 && times[lo + 1] < targetT) lo++;
+      const hi = Math.min(lo + 1, times.length - 1);
+      const t0 = times[lo], t1 = times[hi];
+      const frac = t1 > t0 ? (targetT - t0) / (t1 - t0) : 0;
+      snippet[p] = dominant[lo] + frac * (dominant[hi] - dominant[lo]);
+    }
+
+    beatSnippets.push(snippet);
+    if (beatSnippets.length > MAX_SNIPPETS) beatSnippets.shift();
+  }
+
+  function computeMeanPulseWave() {
+    if (beatSnippets.length < 8) return null;
+    const avg = new Array(SNIPPET_POINTS).fill(0);
+    beatSnippets.forEach(s => { for (let p = 0; p < SNIPPET_POINTS; p++) avg[p] += s[p]; });
+    for (let p = 0; p < SNIPPET_POINTS; p++) avg[p] /= beatSnippets.length;
+    return avg;
+  }
+
+  function drawMeanPulseWave() {
+    const canvas = el('canvas-meanwave');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    if (canvas.width !== rect.width * (window.devicePixelRatio || 1)) resizeCanvas(canvas);
+    ctx.clearRect(0, 0, w, h);
+
+    const countBadge = el('meanwave-count');
+    if (countBadge) countBadge.textContent = beatSnippets.length + ' beats';
+
+    const avg = computeMeanPulseWave();
+    if (!avg) return;
+
+    const maxAbs = Math.max(0.001, ...avg.map(Math.abs));
+    const midY = h / 2;
+    const scale = (h / 2 - 10) / maxAbs;
+
+    // zero-time marker (the detected event's own timestamp)
+    const zeroX = (SNIPPET_PRE_MS / (SNIPPET_PRE_MS + SNIPPET_POST_MS)) * w;
+    ctx.strokeStyle = 'rgba(232,176,75,0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(zeroX, 0); ctx.lineTo(zeroX, h); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = 'rgba(143,167,156,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(w, midY); ctx.stroke();
+
+    ctx.strokeStyle = resolvedAccelColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    avg.forEach((v, i) => {
+      const x = (i / (avg.length - 1)) * w;
+      const y = midY - v * scale;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
   }
 
   function getCandidateRateBpm() {
@@ -1450,6 +1562,7 @@
     frameCount++;
     if (frameCount % 15 === 0) {
       drawSpectrum();
+      drawMeanPulseWave();
     }
     if (frameCount % 6 === 0) {
       const qa = classifyQuality(rmsAccel, 'accel');
