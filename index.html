@@ -463,9 +463,62 @@
   </div>
 </div>
 
+<!-- Rhythm consistency (descriptive, non-diagnostic) -->
+<div class="panel hidden" id="rhythm-panel">
+  <div class="panel-title">Beat-to-Beat Rhythm Consistency</div>
+  <div class="metric-row">
+    <div class="metric-card">
+      <div class="metric-label">Interval Variability (RMSSD-style)</div>
+      <div class="metric-value" id="metric-rmssd">—<span class="unit"> ms</span></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Consistency Score</div>
+      <div class="metric-value" id="metric-consistency">—<span class="unit"> /100</span></div>
+    </div>
+  </div>
+  <div class="hint">
+    <strong style="color:var(--coral)">Descriptive only, not a diagnosis.</strong> This reflects how evenly the detected beat-to-beat intervals are spaced — it does not identify, rule out, or screen for any heart rhythm condition. Natural heart rhythm is never perfectly even, and this pipeline hasn't been validated against a real ECG. If you have any concern about your heart rhythm, please talk to a doctor rather than relying on this number.
+  </div>
+</div>
+
 <!-- Record control -->
 <div class="panel hidden" id="control-panel">
   <button class="btn btn-primary" id="btn-record">Start Recording</button>
+</div>
+
+<!-- PPG (finger-camera pulse) -->
+<div class="panel" id="ppg-panel">
+  <div class="panel-title">
+    <span>Optical Pulse (PPG)</span>
+    <span class="confidence none" id="ppg-quality">not started</span>
+  </div>
+  <div class="hint" id="ppg-intro">
+    Independent second sensor — cover the rear camera and flash completely with a fingertip, hold still. This gives a real timing reference to check the accelerometer-based readings against, the same cross-checking approach used throughout this app.
+  </div>
+  <div id="ppg-permission-gate" style="margin-top:10px;">
+    <button class="btn btn-secondary" id="btn-enable-ppg">Enable Camera for PPG</button>
+  </div>
+  <video id="ppg-video" autoplay playsinline muted style="display:none; width:1px; height:1px;"></video>
+  <canvas id="ppg-hidden-canvas" style="display:none;"></canvas>
+
+  <div id="ppg-live" class="hidden" style="margin-top:12px;">
+    <div class="wave-wrap" style="height:100px;">
+      <canvas id="canvas-ppg"></canvas>
+    </div>
+    <div class="metric-row" style="margin-top:10px;">
+      <div class="metric-card">
+        <div class="metric-label">PPG Rate</div>
+        <div class="metric-value" id="metric-ppg-bpm" style="color:var(--violet);">—<span class="unit"> bpm</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Cross-check vs SCG</div>
+        <span class="confidence none" id="ppg-agreement-pill">collecting…</span>
+      </div>
+    </div>
+    <div class="hint" id="ppg-agreement-hint" style="margin-top:8px;">
+      Two independently-sensed rates (optical pulse vs mechanical vibration) agreeing is much stronger evidence than either alone — same principle as the autocorrelation/spectrum cross-check.
+    </div>
+  </div>
 </div>
 
 <footer>
@@ -526,6 +579,7 @@
     resizeCanvas(canvasAccel);
     resizeCanvas(canvasGyro);
     resizeCanvas(canvasSpectrum);
+    if (canvasPpg) resizeCanvas(canvasPpg);
   }
   window.addEventListener('resize', resizeAllCanvases);
 
@@ -720,6 +774,7 @@
     wavePanel.classList.remove('hidden');
     el('spectrum-panel').classList.remove('hidden');
     metricsPanel.classList.remove('hidden');
+    el('rhythm-panel').classList.remove('hidden');
     controlPanel.classList.remove('hidden');
     resizeAllCanvases();
 
@@ -1092,6 +1147,12 @@
     }
     ctx.stroke();
 
+    // Save geometry so drawEventMarkers can place real peak circles precisely
+    // on this exact trace, rather than approximating from scratch.
+    if (canvas === canvasAccel) {
+      lastAccelGeometry = { w, h, midY, scale, dominant, times: buffer.map((_, i) => state.accelSampleTimes[i]) };
+    }
+
     // signal quality heuristic: RMS of dominant axis vs a noise-floor guess
     const rms = Math.sqrt(dominant.reduce((a, b) => a + b * b, 0) / n);
     return rms;
@@ -1175,6 +1236,8 @@
     return { bpm: 60000 / medMs, likelyMissedBeat };
   }
 
+  let lastAccelGeometry = null;
+
   function drawEventMarkers() {
     if (state.accelBuffer.length < 2 || detectedEvents.length === 0) return;
     const rect = canvasAccel.getBoundingClientRect();
@@ -1184,15 +1247,50 @@
     const span = bufEnd - bufStart;
     if (span <= 0) return;
 
-    ctxAccel.strokeStyle = 'rgba(232,176,75,0.9)';
-    ctxAccel.lineWidth = 1.5;
+    const geo = lastAccelGeometry;
+
     detectedEvents.forEach(ev => {
       if (ev.t < bufStart || ev.t > bufEnd) return;
       const x = ((ev.t - bufStart) / span) * w;
+
+      // Small tick above the trace (kept, useful at a glance even when
+      // the peak circle below is hard to spot in a busy trace).
+      ctxAccel.strokeStyle = 'rgba(232,176,75,0.9)';
+      ctxAccel.lineWidth = 1.5;
       ctxAccel.beginPath();
       ctxAccel.moveTo(x, 4);
       ctxAccel.lineTo(x, 14);
       ctxAccel.stroke();
+
+      // Real peak marker directly on the trace: find the nearest sample
+      // to this event's timestamp and circle its actual plotted position,
+      // plus a faint guide line down to the baseline. This shows exactly
+      // which real feature in the signal was detected — never a
+      // synthesized or idealized shape, always the true recorded point.
+      if (geo && geo.times && geo.times.length) {
+        let nearestIdx = 0, nearestDist = Infinity;
+        for (let i = 0; i < geo.times.length; i++) {
+          const d = Math.abs(geo.times[i] - ev.t);
+          if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+        }
+        const py = geo.midY - geo.dominant[nearestIdx] * geo.scale;
+        const px = (nearestIdx / (geo.times.length - 1)) * geo.w;
+
+        ctxAccel.strokeStyle = 'rgba(232,176,75,0.35)';
+        ctxAccel.lineWidth = 1;
+        ctxAccel.beginPath();
+        ctxAccel.moveTo(px, geo.midY);
+        ctxAccel.lineTo(px, py);
+        ctxAccel.stroke();
+
+        ctxAccel.fillStyle = 'rgba(232,176,75,0.95)';
+        ctxAccel.beginPath();
+        ctxAccel.arc(px, py, 3.5, 0, Math.PI * 2);
+        ctxAccel.fill();
+        ctxAccel.strokeStyle = 'rgba(11,18,16,0.9)';
+        ctxAccel.lineWidth = 1;
+        ctxAccel.stroke();
+      }
     });
   }
 
@@ -1297,6 +1395,35 @@
     return { hz, correlation: bestCorr };
   }
 
+  // ---------- Rhythm consistency (descriptive, non-diagnostic) ----------
+  // RMSSD (root mean square of successive differences between consecutive
+  // intervals) is a standard, purely descriptive time-domain measure of
+  // interval variability — the same metric used in the prior ANS project's
+  // HRV work. This does NOT diagnose, screen for, or rule out any rhythm
+  // condition; it only describes how evenly the detected events are
+  // spaced. Deliberately no naming of arrhythmia types or medical framing
+  // anywhere in this function or its UI labels.
+  function computeRhythmConsistency() {
+    if (detectedEvents.length < 4) return null;
+    const recent = detectedEvents.slice(-10);
+    const intervals = [];
+    for (let i = 1; i < recent.length; i++) intervals.push(recent[i].t - recent[i - 1].t);
+    if (intervals.length < 3) return null;
+
+    let sumSqDiff = 0;
+    for (let i = 1; i < intervals.length; i++) {
+      const diff = intervals[i] - intervals[i - 1];
+      sumSqDiff += diff * diff;
+    }
+    const rmssd = Math.sqrt(sumSqDiff / (intervals.length - 1));
+
+    const meanInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    const cv = meanInterval > 0 ? (rmssd / meanInterval) : 1; // coefficient of variation, lower = more even
+    const consistencyScore = Math.max(0, Math.min(100, Math.round(100 * (1 - Math.min(1, cv * 2)))));
+
+    return { rmssd, consistencyScore };
+  }
+
   function classifyQuality(rms, kind) {
     // Rough placeholder thresholds — will be recalibrated against real
     // device recordings once we have actual test data. Purpose right now
@@ -1342,6 +1469,17 @@
       el('metric-candidate-rate').innerHTML = rateStr;
       const miniRateEl = el('metric-candidate-rate-mini');
       if (miniRateEl) miniRateEl.innerHTML = rateStr;
+
+      const rhythm = computeRhythmConsistency();
+      const rmssdEl = el('metric-rmssd');
+      const consistencyEl = el('metric-consistency');
+      if (rhythm) {
+        if (rmssdEl) rmssdEl.innerHTML = Math.round(rhythm.rmssd) + '<span class="unit"> ms</span>';
+        if (consistencyEl) consistencyEl.innerHTML = rhythm.consistencyScore + '<span class="unit"> /100</span>';
+      } else {
+        if (rmssdEl) rmssdEl.innerHTML = '—<span class="unit"> ms</span>';
+        if (consistencyEl) consistencyEl.innerHTML = '—<span class="unit"> /100</span>';
+      }
 
       const stability = computeStability();
       const stabilityPill = el('stability-pill');
@@ -1529,6 +1667,193 @@
     const pill = el(id);
     pill.textContent = q.label;
     pill.className = 'confidence ' + q.cls;
+  }
+
+  // ---------- PPG (finger-camera pulse) ----------
+  // Second, independent sensor channel, reusing the proven approach from
+  // the prior BeatPrint app: green-channel sampling (better hemoglobin
+  // absorption contrast than red), EMA baseline subtraction, prominence-
+  // based peak detection with a refractory period. Runs fully independently
+  // of the accelerometer pipeline — its only connection to the rest of the
+  // app is the cross-check comparison at the end, which is the whole point:
+  // two differently-sensed channels agreeing is real corroboration.
+  const ppgState = {
+    active: false,
+    stream: null,
+    buffer: [], // {t, green}
+    baseline: null,
+    events: [], // {t}
+  };
+  const PPG_REFRACTORY_MS = 280;
+  const PPG_BUFFER_SECONDS = 8;
+
+  const ppgVideo = el('ppg-video');
+  const ppgHiddenCanvas = el('ppg-hidden-canvas');
+  const ppgHiddenCtx = ppgHiddenCanvas.getContext('2d', { willReadFrequently: true });
+  let canvasPpg = null, ctxPpg = null;
+
+  async function enablePPG() {
+    try {
+      const constraints = { video: { facingMode: { ideal: 'environment' } } };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      ppgState.stream = stream;
+      ppgVideo.srcObject = stream;
+      await ppgVideo.play();
+
+      // Try to turn on the flash/torch for a strong, consistent signal.
+      const track = stream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+      if (capabilities.torch) {
+        try { await track.applyConstraints({ advanced: [{ torch: true }] }); } catch (e) { console.warn('Torch request failed', e); }
+      }
+
+      el('ppg-permission-gate').classList.add('hidden');
+      el('ppg-live').classList.remove('hidden');
+      canvasPpg = el('canvas-ppg');
+      ctxPpg = canvasPpg.getContext('2d');
+      resizeCanvas(canvasPpg);
+
+      ppgState.active = true;
+      ppgSampleLoop();
+    } catch (err) {
+      console.warn('PPG camera access failed', err);
+      el('ppg-quality').textContent = 'camera unavailable';
+      el('ppg-quality').className = 'confidence low';
+    }
+  }
+
+  el('btn-enable-ppg').addEventListener('click', enablePPG);
+
+  function ppgSampleLoop() {
+    if (!ppgState.active) return;
+    if (ppgVideo.videoWidth > 0) {
+      const sampleSize = 20; // small central ROI is enough once the lens is fully covered
+      ppgHiddenCanvas.width = sampleSize;
+      ppgHiddenCanvas.height = sampleSize;
+      ppgHiddenCtx.drawImage(
+        ppgVideo,
+        (ppgVideo.videoWidth - sampleSize) / 2, (ppgVideo.videoHeight - sampleSize) / 2, sampleSize, sampleSize,
+        0, 0, sampleSize, sampleSize
+      );
+      const frame = ppgHiddenCtx.getImageData(0, 0, sampleSize, sampleSize).data;
+      let sumG = 0;
+      for (let i = 0; i < frame.length; i += 4) sumG += frame[i + 1]; // green channel
+      const meanG = sumG / (frame.length / 4);
+
+      const t = nowMs();
+      ppgState.buffer.push({ t, green: meanG });
+      const cutoff = t - PPG_BUFFER_SECONDS * 1000;
+      while (ppgState.buffer.length && ppgState.buffer[0].t < cutoff) ppgState.buffer.shift();
+
+      ppgProcessSample(meanG, t);
+      ppgFrameCount++;
+      if (ppgFrameCount % 3 === 0) updatePpgUI(); // throttle UI/draw work below full sample rate
+    }
+    requestAnimationFrame(ppgSampleLoop);
+  }
+  let ppgFrameCount = 0;
+
+  function ppgProcessSample(meanG, t) {
+    // EMA baseline, matching the description of the original BeatPrint
+    // algorithm — slow-moving average tracks the DC level (finger
+    // pressure, ambient light drift), subtracted out to leave the AC
+    // pulsatile component.
+    const alpha = 0.05;
+    if (ppgState.baseline === null) ppgState.baseline = meanG;
+    ppgState.baseline = ppgState.baseline + alpha * (meanG - ppgState.baseline);
+    const acValue = ppgState.baseline - meanG; // inverted: absorption increases -> green decreases -> pulse is a rise here
+
+    if (ppgState.buffer.length < 20) return;
+    const recentAc = ppgState.buffer.slice(-20).map(s => ppgState.baseline - s.green);
+    const med = median(recentAc);
+    const madVal = Math.max(1e-6, mad(recentAc, med));
+    const threshold = med + 3.5 * madVal * 1.4826;
+
+    const lastEventT = ppgState.events.length ? ppgState.events[ppgState.events.length - 1].t : -Infinity;
+    if (t - lastEventT > PPG_REFRACTORY_MS && acValue > threshold) {
+      ppgState.events.push({ t });
+      if (ppgState.events.length > 40) ppgState.events.shift();
+    }
+  }
+
+  function getPpgRateBpm() {
+    if (ppgState.events.length < 3) return null;
+    const recent = ppgState.events.slice(-6);
+    const intervals = [];
+    for (let i = 1; i < recent.length; i++) intervals.push(recent[i].t - recent[i - 1].t);
+    const medMs = median(intervals);
+    if (medMs <= 0) return null;
+    return 60000 / medMs;
+  }
+
+  function drawPpgWaveform() {
+    if (!ctxPpg || ppgState.buffer.length < 2) return;
+    const rect = canvasPpg.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    ctxPpg.clearRect(0, 0, w, h);
+
+    const vals = ppgState.buffer.map(s => (ppgState.baseline !== null ? ppgState.baseline - s.green : 0));
+    const maxAbs = Math.max(1, ...vals.map(Math.abs));
+    const midY = h / 2;
+    const scale = (h / 2 - 8) / maxAbs;
+
+    ctxPpg.strokeStyle = 'rgba(143,167,156,0.12)';
+    ctxPpg.lineWidth = 1;
+    ctxPpg.beginPath();
+    ctxPpg.moveTo(0, midY); ctxPpg.lineTo(w, midY);
+    ctxPpg.stroke();
+
+    ctxPpg.strokeStyle = '#A48CF0';
+    ctxPpg.lineWidth = 1.6;
+    ctxPpg.beginPath();
+    vals.forEach((v, i) => {
+      const x = (i / (vals.length - 1)) * w;
+      const y = midY - v * scale;
+      if (i === 0) ctxPpg.moveTo(x, y); else ctxPpg.lineTo(x, y);
+    });
+    ctxPpg.stroke();
+  }
+
+  function updatePpgUI() {
+    if (!ppgState.active) return;
+    drawPpgWaveform();
+
+    const bpm = getPpgRateBpm();
+    const bpmEl = el('metric-ppg-bpm');
+    if (bpmEl) bpmEl.innerHTML = (bpm !== null ? Math.round(bpm) : '—') + '<span class="unit"> bpm</span>';
+
+    const recentEventAge = ppgState.events.length ? (nowMs() - ppgState.events[ppgState.events.length - 1].t) : Infinity;
+    const qEl = el('ppg-quality');
+    if (qEl) {
+      if (recentEventAge < 3000) { qEl.textContent = 'pulse detected'; qEl.className = 'confidence high'; }
+      else if (ppgState.buffer.length > 20) { qEl.textContent = 'no pulse found'; qEl.className = 'confidence low'; }
+      else { qEl.textContent = 'starting…'; qEl.className = 'confidence none'; }
+    }
+
+    // Cross-check against the SCG candidate rate — same corroboration
+    // philosophy as the autocorrelation/spectrum check: agreement between
+    // two independently-sensed channels is real evidence.
+    const agreementPill = el('ppg-agreement-pill');
+    const agreementHint = el('ppg-agreement-hint');
+    const scgResult = getCandidateRateBpm();
+    if (agreementPill) {
+      if (bpm === null || scgResult.bpm === null) {
+        agreementPill.textContent = 'collecting…';
+        agreementPill.className = 'confidence none';
+      } else {
+        const ratio = bpm / scgResult.bpm;
+        const agree = ratio > 0.85 && ratio < 1.18;
+        if (agree) {
+          agreementPill.textContent = 'agrees — ' + Math.round(bpm) + ' bpm';
+          agreementPill.className = 'confidence high';
+          if (agreementHint) agreementHint.innerHTML = '<strong style="color:var(--trace)">PPG and SCG agree</strong> — independently-sensed optical and mechanical signals landing on the same rate is strong corroboration.';
+        } else {
+          agreementPill.textContent = 'disagree (PPG ' + Math.round(bpm) + ' vs SCG ' + Math.round(scgResult.bpm) + ')';
+          agreementPill.className = 'confidence low';
+          if (agreementHint) agreementHint.textContent = 'The two channels disagree right now — treat neither as confirmed until they converge.';
+        }
+      }
+    }
   }
 
 })();
