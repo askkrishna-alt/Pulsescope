@@ -1246,44 +1246,64 @@
   // — beatFilterAccel is tuned for reliable spike detection, not for
   // preserving the fine shape of the spike itself.
   const beatSnippets = [];
-  const SNIPPET_PRE_MS = 300, SNIPPET_POST_MS = 600, SNIPPET_POINTS = 90;
+  const SNIPPET_POINTS = 90;
   const MAX_SNIPPETS = 30;
+  const DEFAULT_PRE_MS = 300, DEFAULT_POST_MS = 600; // fallback before a rate estimate exists
 
-  const pendingSnippetCaptures = []; // eventT values awaiting enough future buffer data
-
-  function queueBeatSnippet(eventT) {
-    pendingSnippetCaptures.push(eventT);
+  // Real-device testing (Aug 5) showed a misleading double-peak in the
+  // ensemble average — traced to a fixed 900ms window being WIDER than the
+  // true beat-to-beat interval at ~85bpm (~706ms), so each snippet was
+  // bleeding into part of the next beat's cycle. Scaling the window to the
+  // current candidate rate (capped to sane bounds) keeps each snippet
+  // within roughly one true cycle.
+  function getAdaptiveSnippetWindow() {
+    const candidate = getCandidateRateBpm();
+    if (!candidate || candidate.bpm === null || candidate.bpm <= 0) {
+      return { preMs: DEFAULT_PRE_MS, postMs: DEFAULT_POST_MS };
+    }
+    const intervalMs = 60000 / candidate.bpm;
+    const totalWindow = Math.max(500, Math.min(1000, intervalMs * 0.88)); // stay inside one cycle with margin
+    return { preMs: totalWindow / 3, postMs: totalWindow * 2 / 3 };
   }
 
-  // Called every frame: an event needs SNIPPET_POST_MS of buffer *after*
-  // its own timestamp before a window can be extracted, but events are
-  // detected the moment they happen (from the newest samples), so that
-  // trailing data doesn't exist yet at detection time. This drains the
-  // queue once enough new samples have arrived to cover it — fixes a bug
-  // where the original synchronous call always failed silently (real-
-  // device testing, Aug 5: stuck at "1 beats" for a full 5-minute session).
+  const pendingSnippetCaptures = []; // {eventT, preMs, postMs} awaiting enough future buffer data
+
+  function queueBeatSnippet(eventT) {
+    const win = getAdaptiveSnippetWindow();
+    pendingSnippetCaptures.push({ eventT, preMs: win.preMs, postMs: win.postMs });
+  }
+
+  // Called every frame: an event needs postMs of buffer *after* its own
+  // timestamp before a window can be extracted, but events are detected
+  // the moment they happen (from the newest samples), so that trailing
+  // data doesn't exist yet at detection time. This drains the queue once
+  // enough new samples have arrived to cover it — fixes a bug where the
+  // original synchronous call always failed silently (real-device
+  // testing, Aug 5: stuck at "1 beats" for a full 5-minute session).
   function processPendingSnippets() {
     const times = state.accelSampleTimes;
     if (!times.length) return;
     const latestT = times[times.length - 1];
     for (let i = pendingSnippetCaptures.length - 1; i >= 0; i--) {
-      const eventT = pendingSnippetCaptures[i];
-      if (latestT >= eventT + SNIPPET_POST_MS) {
-        captureBeatSnippet(eventT);
+      const pending = pendingSnippetCaptures[i];
+      if (latestT >= pending.eventT + pending.postMs) {
+        captureBeatSnippet(pending.eventT, pending.preMs, pending.postMs);
         pendingSnippetCaptures.splice(i, 1);
       }
     }
     // Safety: drop anything that's aged out without ever getting enough
     // trailing data (e.g. recording stopped, buffer trimmed past it).
-    while (pendingSnippetCaptures.length && latestT - pendingSnippetCaptures[0] > SNIPPET_POST_MS + 2000) {
+    while (pendingSnippetCaptures.length && latestT - pendingSnippetCaptures[0].eventT > 3000) {
       pendingSnippetCaptures.shift();
     }
   }
 
-  function captureBeatSnippet(eventT) {
+  function captureBeatSnippet(eventT, preMs, postMs) {
+    if (preMs === undefined) preMs = DEFAULT_PRE_MS;
+    if (postMs === undefined) postMs = DEFAULT_POST_MS;
     const times = state.accelSampleTimes;
-    const windowStart = eventT - SNIPPET_PRE_MS;
-    const windowEnd = eventT + SNIPPET_POST_MS;
+    const windowStart = eventT - preMs;
+    const windowEnd = eventT + postMs;
     if (times.length < 2 || times[0] > windowStart || times[times.length - 1] < windowEnd) return; // not enough buffer history yet
 
     const filtered = state.accelBuffer.map(hpAccel);
@@ -1341,7 +1361,11 @@
     const scale = (h / 2 - 10) / maxAbs;
 
     // zero-time marker (the detected event's own timestamp)
-    const zeroX = (SNIPPET_PRE_MS / (SNIPPET_PRE_MS + SNIPPET_POST_MS)) * w;
+    // Snippets are captured with an adaptive window that can vary slightly
+    // beat to beat, but each is stored resampled to the same 0-1 proportion
+    // (pre:post ratio is always 1:2 regardless of total window size), so
+    // this ratio remains a correct position for the zero-time marker.
+    const zeroX = (1 / 3) * w;
     ctx.strokeStyle = 'rgba(232,176,75,0.4)';
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
