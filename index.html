@@ -535,6 +535,40 @@
   </div>
 </div>
 
+<!-- Microphone diagnostic: PCG feasibility test only -->
+<div class="panel" id="mic-diag-panel">
+  <div class="panel-title">
+    <span>Microphone Diagnostic (heart-sound feasibility test)</span>
+    <span class="confidence none" id="mic-diag-status">not started</span>
+  </div>
+  <div class="hint">
+    This is <strong style="color:var(--coral)">not a heart-sound detector</strong> — it's a raw feasibility check for whether this phone's microphone can pick up the 20–150 Hz range where S1/S2 heart sounds actually live. Requests unprocessed audio (echo cancellation, noise suppression, and auto-gain all disabled), but some browsers/devices apply their own processing regardless — the spectrum below is the honest answer either way.
+  </div>
+  <button class="btn btn-secondary" id="btn-enable-mic" style="margin-top:10px;">Test Microphone</button>
+
+  <div id="mic-diag-live" class="hidden" style="margin-top:12px;">
+    <div class="panel-title" style="margin-top:4px;">
+      <span>Spectrum, 0–200 Hz (heart-sound band highlighted)</span>
+    </div>
+    <div class="wave-wrap" style="height:110px;">
+      <canvas id="canvas-mic-spectrum"></canvas>
+    </div>
+    <div class="metric-row" style="margin-top:10px;">
+      <div class="metric-card">
+        <div class="metric-label">Energy in 20–150 Hz</div>
+        <div class="metric-value" id="metric-mic-lowband">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Energy in 300 Hz–1 kHz (voice ref.)</div>
+        <div class="metric-value" id="metric-mic-voiceband">—</div>
+      </div>
+    </div>
+    <div class="hint" id="mic-diag-verdict" style="margin-top:8px;">
+      Collecting…
+    </div>
+  </div>
+</div>
+
 <footer>
   Experimental wellness tool. Mechanical cardiac vibration signal only —<br>
   does not measure or reconstruct electrical cardiac activity (ECG).
@@ -594,6 +628,7 @@
     resizeCanvas(canvasGyro);
     resizeCanvas(canvasSpectrum);
     if (canvasPpg) resizeCanvas(canvasPpg);
+    if (canvasMicSpectrum) resizeCanvas(canvasMicSpectrum);
   }
   window.addEventListener('resize', resizeAllCanvases);
 
@@ -2037,6 +2072,117 @@
           agreementPill.className = 'confidence low';
           if (agreementHint) agreementHint.textContent = 'The two channels disagree right now — treat neither as confirmed until they converge.';
         }
+      }
+    }
+  }
+
+  // ---------- Microphone diagnostic (PCG feasibility test) ----------
+  // Purely diagnostic: does this phone's mic + browser pipeline pass real
+  // energy in the 20-150Hz band where S1/S2 heart sounds actually live, or
+  // is it cut off by hardware/OS voice-band filtering before any of our
+  // code ever sees it? Requests unprocessed audio explicitly, but some
+  // browsers/devices apply their own processing regardless of these
+  // constraints — the spectrum shown is the honest answer either way, not
+  // a claim that heart sounds are or aren't present.
+  let micAudioCtx = null, micAnalyser = null, micFreqData = null;
+  let canvasMicSpectrum = null, ctxMicSpectrum = null;
+  const micEnergyHistory = { low: [], voice: [] };
+
+  async function enableMicDiagnostic() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = micAudioCtx.createMediaStreamSource(stream);
+      micAnalyser = micAudioCtx.createAnalyser();
+      micAnalyser.fftSize = 8192; // large FFT for decent resolution down at 20-150Hz
+      micAnalyser.smoothingTimeConstant = 0.5;
+      source.connect(micAnalyser);
+      micFreqData = new Uint8Array(micAnalyser.frequencyBinCount);
+
+      el('btn-enable-mic').classList.add('hidden');
+      el('mic-diag-live').classList.remove('hidden');
+      canvasMicSpectrum = el('canvas-mic-spectrum');
+      ctxMicSpectrum = canvasMicSpectrum.getContext('2d');
+      resizeCanvas(canvasMicSpectrum);
+
+      el('mic-diag-status').textContent = 'listening';
+      el('mic-diag-status').className = 'confidence high';
+
+      micDiagLoop();
+    } catch (err) {
+      console.warn('Mic diagnostic failed', err);
+      el('mic-diag-status').textContent = 'mic unavailable';
+      el('mic-diag-status').className = 'confidence low';
+    }
+  }
+  el('btn-enable-mic').addEventListener('click', enableMicDiagnostic);
+
+  function micDiagLoop() {
+    if (!micAnalyser) return;
+    micAnalyser.getByteFrequencyData(micFreqData);
+    drawMicSpectrum();
+    requestAnimationFrame(micDiagLoop);
+  }
+
+  function drawMicSpectrum() {
+    const rect = canvasMicSpectrum.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    ctxMicSpectrum.clearRect(0, 0, w, h);
+
+    const sampleRate = micAudioCtx.sampleRate;
+    const hzPerBin = sampleRate / micAnalyser.fftSize;
+    const maxHzDisplay = 200;
+    const maxBin = Math.min(micFreqData.length - 1, Math.floor(maxHzDisplay / hzPerBin));
+
+    // highlight the heart-sound band (20-150Hz)
+    const lowBandStartPx = (20 / hzPerBin) / maxBin * w;
+    const lowBandEndPx = (150 / hzPerBin) / maxBin * w;
+    ctxMicSpectrum.fillStyle = 'rgba(232,176,75,0.08)';
+    ctxMicSpectrum.fillRect(lowBandStartPx, 0, lowBandEndPx - lowBandStartPx, h);
+    ctxMicSpectrum.strokeStyle = 'rgba(232,176,75,0.4)';
+    ctxMicSpectrum.setLineDash([3, 3]);
+    ctxMicSpectrum.beginPath(); ctxMicSpectrum.moveTo(lowBandStartPx, 0); ctxMicSpectrum.lineTo(lowBandStartPx, h); ctxMicSpectrum.stroke();
+    ctxMicSpectrum.beginPath(); ctxMicSpectrum.moveTo(lowBandEndPx, 0); ctxMicSpectrum.lineTo(lowBandEndPx, h); ctxMicSpectrum.stroke();
+    ctxMicSpectrum.setLineDash([]);
+
+    ctxMicSpectrum.fillStyle = '#A48CF0';
+    const barW = w / maxBin;
+    for (let i = 1; i <= maxBin; i++) {
+      const mag = micFreqData[i] / 255;
+      const bh = mag * (h - 4);
+      ctxMicSpectrum.fillRect(i * barW, h - bh, Math.max(1, barW - 1), bh);
+    }
+
+    // Quantitative low-band vs voice-band energy comparison
+    const lowBandBins = [Math.round(20 / hzPerBin), Math.round(150 / hzPerBin)];
+    const voiceBandBins = [Math.round(300 / hzPerBin), Math.min(micFreqData.length - 1, Math.round(1000 / hzPerBin))];
+    let lowSum = 0, lowCount = 0;
+    for (let i = lowBandBins[0]; i <= lowBandBins[1]; i++) { lowSum += micFreqData[i]; lowCount++; }
+    let voiceSum = 0, voiceCount = 0;
+    for (let i = voiceBandBins[0]; i <= voiceBandBins[1]; i++) { voiceSum += micFreqData[i]; voiceCount++; }
+    const lowAvg = lowCount ? lowSum / lowCount : 0;
+    const voiceAvg = voiceCount ? voiceSum / voiceCount : 0;
+
+    micEnergyHistory.low.push(lowAvg);
+    micEnergyHistory.voice.push(voiceAvg);
+    if (micEnergyHistory.low.length > 60) { micEnergyHistory.low.shift(); micEnergyHistory.voice.shift(); }
+
+    const lowEl = el('metric-mic-lowband');
+    const voiceEl = el('metric-mic-voiceband');
+    if (lowEl) lowEl.textContent = Math.round(lowAvg) + ' / 255';
+    if (voiceEl) voiceEl.textContent = Math.round(voiceAvg) + ' / 255';
+
+    const verdictEl = el('mic-diag-verdict');
+    if (verdictEl && micEnergyHistory.low.length > 20) {
+      const avgLow = micEnergyHistory.low.reduce((a, b) => a + b, 0) / micEnergyHistory.low.length;
+      if (avgLow < 5) {
+        verdictEl.innerHTML = '<strong style="color:var(--coral)">Essentially no energy in the heart-sound band.</strong> Either hardware-filtered before software ever sees it, or nothing is coupling into the mic right now — try holding the phone against your chest near the mic port. If this stays near zero even then, PCG likely isn\'t viable on this device.';
+      } else if (avgLow < 30) {
+        verdictEl.innerHTML = '<strong style="color:var(--amber)">Some low-band energy present, but weak.</strong> Worth trying different mic positioning against the chest before concluding either way.';
+      } else {
+        verdictEl.innerHTML = '<strong style="color:var(--trace)">Real energy present in the heart-sound band.</strong> This is a genuine signal at those frequencies — worth pursuing further, though this alone doesn\'t confirm it\'s actually heart sounds rather than other low-frequency noise (handling, breathing, ambient rumble).';
       }
     }
   }
