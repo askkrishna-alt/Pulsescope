@@ -569,6 +569,33 @@
   </div>
 </div>
 
+<!-- PCG heart-sound detector (experimental, built on the mic diagnostic) -->
+<div class="panel hidden" id="pcg-panel">
+  <div class="panel-title">
+    <span>Heart Sound Detector (PCG, experimental)</span>
+    <span class="confidence none" id="pcg-quality">starting…</span>
+  </div>
+  <div class="hint">
+    Bandpassed (20–150 Hz) audio envelope with the same prominence-based detection proven on the accelerometer. <strong style="color:var(--coral)">Experimental — not validated against real S1/S2 timing.</strong> A detected rhythm here could be real heart sounds, or could be handling noise, breathing, or ambient rumble that happens to be periodic. The cross-check below is the honest way to tell.
+  </div>
+  <div class="wave-wrap" style="height:100px; margin-top:10px;">
+    <canvas id="canvas-pcg"></canvas>
+  </div>
+  <div class="metric-row" style="margin-top:10px;">
+    <div class="metric-card">
+      <div class="metric-label">PCG Rate</div>
+      <div class="metric-value" id="metric-pcg-bpm" style="color:var(--coral);">—<span class="unit"> bpm</span></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Cross-check vs SCG / PPG</div>
+      <span class="confidence none" id="pcg-agreement-pill">collecting…</span>
+    </div>
+  </div>
+  <div class="hint" id="pcg-agreement-hint" style="margin-top:8px;">
+    Three independently-sensed channels (mechanical, optical, acoustic) agreeing is the strongest evidence this app can produce.
+  </div>
+</div>
+
 <footer>
   Experimental wellness tool. Mechanical cardiac vibration signal only —<br>
   does not measure or reconstruct electrical cardiac activity (ECG).
@@ -2139,6 +2166,7 @@
       el('mic-diag-status').className = 'confidence high';
 
       micDiagLoop();
+      setupPcgDetector(source);
     } catch (err) {
       console.warn('Mic diagnostic setup failed', err);
       el('mic-diag-status').textContent = err.name + ': ' + (err.message || 'unknown error');
@@ -2151,6 +2179,7 @@
     if (!micAnalyser) return;
     micAnalyser.getByteFrequencyData(micFreqData);
     drawMicSpectrum();
+    updatePcgUI();
     requestAnimationFrame(micDiagLoop);
   }
 
@@ -2211,6 +2240,190 @@
         verdictEl.innerHTML = '<strong style="color:var(--amber)">Some low-band energy present, but weak.</strong> Worth trying different mic positioning against the chest before concluding either way.';
       } else {
         verdictEl.innerHTML = '<strong style="color:var(--trace)">Real energy present in the heart-sound band.</strong> This is a genuine signal at those frequencies — worth pursuing further, though this alone doesn\'t confirm it\'s actually heart sounds rather than other low-frequency noise (handling, breathing, ambient rumble).';
+      }
+    }
+  }
+
+  // ---------- PCG heart-sound detector (experimental) ----------
+  // Built directly on the mic diagnostic's audio stream. Uses a real-time
+  // (causal, single-pass — filtfilt can't run live) Butterworth bandpass
+  // at 20-150Hz, same biquad design already validated for the accelerometer
+  // pipeline, applied via a ScriptProcessorNode for continuous streaming
+  // access to raw audio samples (AnalyserNode alone only gives repeated
+  // snapshots of the current buffer, not a queue of new samples). Envelope
+  // (per-chunk RMS) feeds the same median+MAD prominence detector already
+  // proven via real tap tests on the accelerometer channel.
+  let pcgProcessor = null;
+  let pcgHpState = null, pcgLpState = null; // persistent single-pass biquad state
+  const pcgEnvelopeBuffer = []; // {t, value}
+  const pcgEvents = [];
+  const PCG_BUFFER_SECONDS = 8;
+  const PCG_REFRACTORY_MS = 280;
+
+  function makeStreamingBiquadState(coef) {
+    return { coef, x1: 0, x2: 0, y1: 0, y2: 0 };
+  }
+  function streamBiquadSample(state, xi) {
+    const c = state.coef;
+    const yi = c.b0 * xi + c.b1 * state.x1 + c.b2 * state.x2 - c.a1 * state.y1 - c.a2 * state.y2;
+    state.x2 = state.x1; state.x1 = xi;
+    state.y2 = state.y1; state.y1 = yi;
+    return yi;
+  }
+
+  function setupPcgDetector(source) {
+    const sampleRate = micAudioCtx.sampleRate;
+    const hpCoef = designBiquad('highpass', 20, sampleRate, BUTTERWORTH_Q);
+    const lpCoef = designBiquad('lowpass', 150, sampleRate, BUTTERWORTH_Q);
+    pcgHpState = makeStreamingBiquadState(hpCoef);
+    pcgLpState = makeStreamingBiquadState(lpCoef);
+
+    const bufferSize = 2048; // ~43ms chunks at 48kHz — plenty of resolution for 20-150Hz content
+    pcgProcessor = micAudioCtx.createScriptProcessor(bufferSize, 1, 1);
+    source.connect(pcgProcessor);
+    // Some browsers require the processor connected to a destination to
+    // actually fire audioprocess events, even though we don't want to
+    // play the audio back. A zero-gain node keeps it silent.
+    const silentGain = micAudioCtx.createGain();
+    silentGain.gain.value = 0;
+    pcgProcessor.connect(silentGain);
+    silentGain.connect(micAudioCtx.destination);
+
+    pcgProcessor.onaudioprocess = (e) => {
+      const input = e.inputBuffer.getChannelData(0);
+      let sumSq = 0;
+      for (let i = 0; i < input.length; i++) {
+        let v = streamBiquadSample(pcgHpState, input[i]);
+        v = streamBiquadSample(pcgLpState, v);
+        sumSq += v * v;
+      }
+      const rms = Math.sqrt(sumSq / input.length);
+      const t = nowMs();
+      pcgEnvelopeBuffer.push({ t, value: rms });
+      const cutoff = t - PCG_BUFFER_SECONDS * 1000;
+      while (pcgEnvelopeBuffer.length && pcgEnvelopeBuffer[0].t < cutoff) pcgEnvelopeBuffer.shift();
+
+      runPcgDetection();
+    };
+
+    el('pcg-panel').classList.remove('hidden');
+  }
+
+  function runPcgDetection() {
+    if (pcgEnvelopeBuffer.length < 15) return;
+    const vals = pcgEnvelopeBuffer.map(s => s.value);
+    const med = median(vals);
+    const madVal = Math.max(1e-8, mad(vals, med));
+    const threshold = med + 4 * madVal * 1.4826;
+
+    const lastEventT = pcgEvents.length ? pcgEvents[pcgEvents.length - 1].t : -Infinity;
+    const i = vals.length - 2; // newest fully-formed sample (need i+1 for local-max check)
+    if (i < 1) return;
+    const t = pcgEnvelopeBuffer[i].t;
+    if (t - lastEventT < PCG_REFRACTORY_MS) return;
+    if (vals[i] > threshold && vals[i] >= vals[i - 1] && vals[i] >= vals[i + 1]) {
+      pcgEvents.push({ t });
+      if (pcgEvents.length > 40) pcgEvents.shift();
+    }
+  }
+
+  function getPcgRateBpm() {
+    if (pcgEvents.length < 3) return null;
+    const recent = pcgEvents.slice(-6);
+    const intervals = [];
+    for (let i = 1; i < recent.length; i++) intervals.push(recent[i].t - recent[i - 1].t);
+    const medMs = median(intervals);
+    if (medMs <= 0) return null;
+    return 60000 / medMs;
+  }
+
+  function drawPcgWaveform() {
+    const canvas = el('canvas-pcg');
+    if (!canvas || pcgEnvelopeBuffer.length < 2) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    if (canvas.width !== rect.width * (window.devicePixelRatio || 1)) resizeCanvas(canvas);
+    ctx.clearRect(0, 0, w, h);
+
+    const vals = pcgEnvelopeBuffer.map(s => s.value);
+    const maxV = Math.max(0.0001, ...vals);
+    ctx.strokeStyle = '#E8735E';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    vals.forEach((v, idx) => {
+      const x = (idx / (vals.length - 1)) * w;
+      const y = h - (v / maxV) * (h - 6);
+      if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // event ticks
+    const bufStart = pcgEnvelopeBuffer[0].t, bufEnd = pcgEnvelopeBuffer[pcgEnvelopeBuffer.length - 1].t;
+    const span = bufEnd - bufStart;
+    if (span > 0) {
+      ctx.strokeStyle = 'rgba(232,176,75,0.9)';
+      ctx.lineWidth = 1.5;
+      pcgEvents.forEach(ev => {
+        if (ev.t < bufStart || ev.t > bufEnd) return;
+        const x = ((ev.t - bufStart) / span) * w;
+        ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, 14); ctx.stroke();
+      });
+    }
+  }
+
+  function updatePcgUI() {
+    if (!pcgProcessor) return;
+    drawPcgWaveform();
+
+    const bpm = getPcgRateBpm();
+    const bpmEl = el('metric-pcg-bpm');
+    if (bpmEl) bpmEl.innerHTML = (bpm !== null ? Math.round(bpm) : '—') + '<span class="unit"> bpm</span>';
+
+    const recentAge = pcgEvents.length ? (nowMs() - pcgEvents[pcgEvents.length - 1].t) : Infinity;
+    const qEl = el('pcg-quality');
+    if (qEl) {
+      if (recentAge < 3000) { qEl.textContent = 'sound detected'; qEl.className = 'confidence high'; }
+      else if (pcgEnvelopeBuffer.length > 15) { qEl.textContent = 'no rhythmic sound found'; qEl.className = 'confidence low'; }
+      else { qEl.textContent = 'starting…'; qEl.className = 'confidence none'; }
+    }
+
+    // Three-way cross-check: PCG vs SCG vs PPG. Agreement between any two
+    // (or ideally all three) independently-sensed channels is the
+    // strongest evidence this app can produce — same corroboration
+    // philosophy as autocorrelation/spectrum and the PPG/SCG check.
+    const pill = el('pcg-agreement-pill');
+    const hint = el('pcg-agreement-hint');
+    if (pill) {
+      const scgResult = getCandidateRateBpm();
+      const ppgBpm = (typeof getPpgRateBpm === 'function') ? getPpgRateBpm() : null;
+      const candidates = [];
+      if (bpm !== null) candidates.push({ label: 'PCG', v: bpm });
+      if (scgResult.bpm !== null) candidates.push({ label: 'SCG', v: scgResult.bpm });
+      if (ppgBpm !== null) candidates.push({ label: 'PPG', v: ppgBpm });
+
+      if (candidates.length < 2) {
+        pill.textContent = 'collecting…';
+        pill.className = 'confidence none';
+      } else {
+        let bestPair = null, bestDiff = Infinity;
+        for (let a = 0; a < candidates.length; a++) {
+          for (let b = a + 1; b < candidates.length; b++) {
+            const ratio = candidates[a].v / candidates[b].v;
+            const diff = Math.abs(1 - ratio);
+            if (diff < bestDiff) { bestDiff = diff; bestPair = [candidates[a], candidates[b]]; }
+          }
+        }
+        const agree = bestDiff < 0.15;
+        if (agree) {
+          pill.textContent = bestPair[0].label + '/' + bestPair[1].label + ' agree — ~' + Math.round((bestPair[0].v + bestPair[1].v) / 2) + ' bpm';
+          pill.className = 'confidence high';
+          if (hint) hint.innerHTML = '<strong style="color:var(--trace)">Two independent channels agree.</strong> That\'s real corroboration, regardless of what the other channel shows.';
+        } else {
+          pill.textContent = 'no agreement yet';
+          pill.className = 'confidence low';
+          if (hint) hint.textContent = 'No two channels are converging right now — treat all current readings as unconfirmed.';
+        }
       }
     }
   }
