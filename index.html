@@ -1306,15 +1306,31 @@
     const windowEnd = eventT + postMs;
     if (times.length < 2 || times[0] > windowStart || times[times.length - 1] < windowEnd) return; // not enough buffer history yet
 
-    const filtered = state.accelBuffer.map(hpAccel);
+    // Axis selection on the lightly-filtered signal (just to pick which
+    // axis carries the real motion, a coarse decision).
+    const lightlyFiltered = state.accelBuffer.map(hpAccel);
     let maxVarAxis = 'x', maxVar = -Infinity;
     ['x', 'y', 'z'].forEach(axis => {
-      const vals = filtered.map(f => f[axis]);
+      const vals = lightlyFiltered.map(f => f[axis]);
       const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
       const variance = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
       if (variance > maxVar) { maxVar = variance; maxVarAxis = axis; }
     });
-    const dominant = filtered.map(f => f[maxVarAxis]);
+
+    // Real-device testing (Aug 5) showed a multi-peaked, oscillatory
+    // ensemble average even after fixing the window-overlap bug — traced
+    // to this function still using hpAccel (0.7-25Hz, doesn't touch the
+    // characterized ~5-7Hz broadband noise hump at all) while spectrum and
+    // autocorrelation were already upgraded to the validated Butterworth
+    // filtfilt. 0.6-8Hz here (wider than the 0.6-3Hz used for rate
+    // detection) is a deliberate compromise: narrow enough to meaningfully
+    // attenuate that noise band via the 4th-order rolloff, wide enough to
+    // avoid smearing a genuinely sharp AO/AC-style transient into a smooth
+    // blob. If the average still looks noisy after this, that's itself
+    // informative — it would mean the noise and the transient overlap too
+    // much in frequency for simple linear filtering to cleanly separate.
+    const rawDominant = state.accelBuffer.map(s => s[maxVarAxis]);
+    const dominant = butterworthBandpassFiltFilt(rawDominant, ACTUAL_SAMPLE_HZ, 0.6, 8);
 
     // Linear interpolation to a fixed-length, evenly-spaced snippet, since
     // real sample timing isn't perfectly uniform.
