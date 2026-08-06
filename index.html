@@ -2089,10 +2089,38 @@
   const micEnergyHistory = { low: [], voice: [] };
 
   async function enableMicDiagnostic() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      el('mic-diag-status').textContent = 'not supported in this browser/context';
+      el('mic-diag-status').className = 'confidence low';
+      return;
+    }
+
+    let stream = null;
+    let usedFallback = false;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Bare boolean constraints (echoCancellation: false, etc.) are
+      // treated as EXACT per spec, not a preference — some devices/
+      // browsers can't guarantee disabling these and throw
+      // OverconstrainedError rather than just ignoring the request. Try
+      // the strict "raw audio" request first; fall back to plain audio if
+      // that specific request is what's failing.
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       });
+    } catch (strictErr) {
+      console.warn('Strict raw-audio request failed, trying plain audio:true', strictErr);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        usedFallback = true;
+      } catch (fallbackErr) {
+        console.warn('Mic diagnostic failed entirely', fallbackErr);
+        el('mic-diag-status').textContent = fallbackErr.name + ': ' + (fallbackErr.message || 'unknown error');
+        el('mic-diag-status').className = 'confidence low';
+        return;
+      }
+    }
+
+    try {
       micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const source = micAudioCtx.createMediaStreamSource(stream);
       micAnalyser = micAudioCtx.createAnalyser();
@@ -2107,13 +2135,13 @@
       ctxMicSpectrum = canvasMicSpectrum.getContext('2d');
       resizeCanvas(canvasMicSpectrum);
 
-      el('mic-diag-status').textContent = 'listening';
+      el('mic-diag-status').textContent = usedFallback ? 'listening (fallback: browser may apply its own processing)' : 'listening (raw audio)';
       el('mic-diag-status').className = 'confidence high';
 
       micDiagLoop();
     } catch (err) {
-      console.warn('Mic diagnostic failed', err);
-      el('mic-diag-status').textContent = 'mic unavailable';
+      console.warn('Mic diagnostic setup failed', err);
+      el('mic-diag-status').textContent = err.name + ': ' + (err.message || 'unknown error');
       el('mic-diag-status').className = 'confidence low';
     }
   }
