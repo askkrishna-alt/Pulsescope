@@ -1651,8 +1651,18 @@
   function computeRhythmConsistency() {
     if (detectedEvents.length < 4) return null;
     const recent = detectedEvents.slice(-10);
-    const intervals = [];
-    for (let i = 1; i < recent.length; i++) intervals.push(recent[i].t - recent[i - 1].t);
+    const rawIntervals = [];
+    for (let i = 1; i < recent.length; i++) rawIntervals.push(recent[i].t - recent[i - 1].t);
+    if (rawIntervals.length < 3) return null;
+
+    // Reject gap outliers (missed detections) before computing variability.
+    // Real-device testing (Aug 9) showed a single large gap inflating
+    // RMSSD to a nonsensical ~16 seconds — a missed beat should be
+    // excluded from a variability calculation, not treated as a genuinely
+    // long interval, same principle as the missed-beat guard already used
+    // for the candidate-rate estimate.
+    const medRaw = median(rawIntervals);
+    const intervals = rawIntervals.filter(iv => iv < medRaw * 1.8 && iv > medRaw * 0.4);
     if (intervals.length < 3) return null;
 
     let sumSqDiff = 0;
@@ -2398,7 +2408,18 @@
       const scgResult = getCandidateRateBpm();
       const ppgBpm = (typeof getPpgRateBpm === 'function') ? getPpgRateBpm() : null;
       const candidates = [];
-      if (bpm !== null) candidates.push({ label: 'PCG', v: bpm });
+      if (bpm !== null) {
+        candidates.push({ label: 'PCG', v: bpm });
+        // S1 and S2 are two distinct, comparably-loud sounds per single
+        // cardiac cycle — unlike SCG/PPG's one dominant event per beat, a
+        // simple prominence detector applied to heart sounds can easily
+        // catch both, roughly doubling the apparent rate. Real-device
+        // testing (Aug 9) showed a suspiciously regular 156bpm reading —
+        // 156/2=78, close to the established 82-90bpm baseline — so this
+        // is tested explicitly as a specific, physiologically-motivated
+        // hypothesis, not a generic harmonic guess.
+        candidates.push({ label: 'PCG (÷2, S1+S2 hypothesis)', v: bpm / 2 });
+      }
       if (scgResult.bpm !== null) candidates.push({ label: 'SCG', v: scgResult.bpm });
       if (ppgBpm !== null) candidates.push({ label: 'PPG', v: ppgBpm });
 
