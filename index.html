@@ -620,6 +620,25 @@
   <div class="hint" id="pcg-agreement-hint" style="margin-top:8px;">
     Three independently-sensed channels (mechanical, optical, acoustic) agreeing is the strongest evidence this app can produce.
   </div>
+
+  <div class="panel-title" style="margin-top:16px;">
+    <span>SCG ↔ Heart Sound Timing</span>
+  </div>
+  <div class="hint">
+    Real millisecond deltas computed live from the shared browser clock — not reconstructed from video. For each recent SCG event, finds the nearest classified S1 (mitral/tricuspid closure) and nearest S2 (aortic/pulmonic closure), and reports the median offset. A consistent, repeatable offset here is genuine timing evidence; a scattered one means the pairing isn't reliable yet.
+  </div>
+  <div class="metric-row" style="margin-top:8px;">
+    <div class="metric-card">
+      <div class="metric-label">SCG relative to S1</div>
+      <div class="metric-value" id="metric-delta-s1" style="font-size:1.1rem;">—<span class="unit"> ms</span></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">SCG relative to S2</div>
+      <div class="metric-value" id="metric-delta-s2" style="font-size:1.1rem;">—<span class="unit"> ms</span></div>
+    </div>
+  </div>
+  <div class="hint" id="timing-sample-note" style="margin-top:6px;">Needs several SCG events and several classified S1/S2 pairs before this is meaningful.</div>
+
   <button class="btn btn-secondary" id="btn-log-pcg" style="margin-top:10px; font-size:0.85rem; padding:10px;">Log This PCG Reading to History</button>
 </div>
 
@@ -2441,9 +2460,73 @@
     const t = pcgEnvelopeBuffer[i].t;
     if (t - lastEventT < PCG_REFRACTORY_MS) return;
     if (vals[i] > threshold && vals[i] >= vals[i - 1] && vals[i] >= vals[i + 1]) {
-      pcgEvents.push({ t });
+      // S1/S2 classification: real-device audio analysis (Aug 25, offline
+      // Hilbert-envelope analysis of a raw recording) found a clean,
+      // consistent alternating pattern — short intervals (~340-370ms,
+      // systole, S1-to-S2) followed by long intervals (~500-520ms,
+      // diastole, S2-to-S1). Classify each new event by comparing the
+      // interval since the last event against the recent median: shorter
+      // than median -> this event is S2 (just finished a short systole);
+      // longer than median -> this event is S1 (just finished a long
+      // diastole). Needs a few events of history before it's meaningful.
+      let type = 'unknown';
+      if (pcgEvents.length >= 4) {
+        const recentIntervals = [];
+        for (let k = pcgEvents.length - 4; k < pcgEvents.length; k++) {
+          if (k > 0) recentIntervals.push(pcgEvents[k].t - pcgEvents[k - 1].t);
+        }
+        const intervalMed = median(recentIntervals);
+        const thisInterval = t - lastEventT;
+        type = thisInterval < intervalMed ? 'S2' : 'S1';
+      }
+      pcgEvents.push({ t, type });
       if (pcgEvents.length > 40) pcgEvents.shift();
     }
+  }
+
+  // ---------- SCG <-> heart sound timing correlation ----------
+  // Both channels already run on the same clock (nowMs(), i.e. the
+  // browser's performance.now()) within one live session, so exact
+  // millisecond deltas can be computed directly — no video reconstruction,
+  // no frame-rate limits, unlike the earlier post-hoc analysis. For each
+  // recent SCG event, finds the nearest classified S1 and nearest
+  // classified S2, and reports the median delta across all pairs found —
+  // median rather than mean since a single mismatched pairing (e.g. SCG
+  // event nearest to the wrong cycle) shouldn't skew the whole estimate.
+  function computeScgHeartSoundTiming() {
+    if (detectedEvents.length < 3 || pcgEvents.length < 6) return null;
+    const scgRecent = detectedEvents.slice(-10);
+    const s1Events = pcgEvents.filter(e => e.type === 'S1');
+    const s2Events = pcgEvents.filter(e => e.type === 'S2');
+    if (s1Events.length < 2 || s2Events.length < 2) return null;
+
+    function nearestDelta(scgT, pool) {
+      let best = null, bestAbs = Infinity;
+      pool.forEach(ev => {
+        const d = scgT - ev.t;
+        if (Math.abs(d) < bestAbs) { bestAbs = Math.abs(d); best = d; }
+      });
+      return best;
+    }
+
+    const deltasToS1 = [], deltasToS2 = [];
+    scgRecent.forEach(ev => {
+      const d1 = nearestDelta(ev.t, s1Events);
+      const d2 = nearestDelta(ev.t, s2Events);
+      // Only count pairings within a physiologically plausible window
+      // (±400ms) — anything further apart is almost certainly matched to
+      // the wrong cycle, not a real timing relationship.
+      if (d1 !== null && Math.abs(d1) < 400) deltasToS1.push(d1);
+      if (d2 !== null && Math.abs(d2) < 400) deltasToS2.push(d2);
+    });
+
+    if (deltasToS1.length < 2 && deltasToS2.length < 2) return null;
+    return {
+      medianDeltaToS1Ms: deltasToS1.length ? median(deltasToS1) : null,
+      medianDeltaToS2Ms: deltasToS2.length ? median(deltasToS2) : null,
+      sampleCountS1: deltasToS1.length,
+      sampleCountS2: deltasToS2.length,
+    };
   }
 
   function getPcgRateBpm() {
@@ -2501,6 +2584,19 @@
     if (bpmEl) bpmEl.innerHTML = (bpm !== null ? Math.round(bpm) : '—') + '<span class="unit"> bpm</span>';
     const bpmMiniEl = el('metric-pcg-bpm-mini');
     if (bpmMiniEl) bpmMiniEl.innerHTML = (bpm !== null ? Math.round(bpm) : '—') + '<span class="unit"> bpm</span>';
+
+    const timing = computeScgHeartSoundTiming();
+    const s1El = el('metric-delta-s1');
+    const s2El = el('metric-delta-s2');
+    const sampleNote = el('timing-sample-note');
+    if (timing) {
+      if (s1El) s1El.innerHTML = (timing.medianDeltaToS1Ms !== null ? (timing.medianDeltaToS1Ms > 0 ? '+' : '') + Math.round(timing.medianDeltaToS1Ms) : '—') + '<span class="unit"> ms</span>';
+      if (s2El) s2El.innerHTML = (timing.medianDeltaToS2Ms !== null ? (timing.medianDeltaToS2Ms > 0 ? '+' : '') + Math.round(timing.medianDeltaToS2Ms) : '—') + '<span class="unit"> ms</span>';
+      if (sampleNote) sampleNote.textContent = 'Based on ' + timing.sampleCountS1 + ' SCG-S1 pairs and ' + timing.sampleCountS2 + ' SCG-S2 pairs. Negative = SCG event happens before that heart sound; positive = after.';
+    } else {
+      if (s1El) s1El.innerHTML = '—<span class="unit"> ms</span>';
+      if (s2El) s2El.innerHTML = '—<span class="unit"> ms</span>';
+    }
 
     const recentAge = pcgEvents.length ? (nowMs() - pcgEvents[pcgEvents.length - 1].t) : Infinity;
     const qEl = el('pcg-quality');
@@ -2674,13 +2770,28 @@
   function buildPcgSnapshot() {
     const bpm = (typeof getPcgRateBpm === 'function') ? getPcgRateBpm() : null;
     const scgResult = (typeof getCandidateRateBpm === 'function') ? getCandidateRateBpm() : { bpm: null };
+    const autocorr = lastKnownMetrics.autocorr;
+    const timing = (typeof computeScgHeartSoundTiming === 'function') ? computeScgHeartSoundTiming() : null;
     return {
       timestamp: new Date().toISOString(),
       type: 'PCG',
       pcgRateBpm: bpm !== null ? Math.round(bpm) : null,
       pcgRateHalvedBpm: bpm !== null ? Math.round(bpm / 2) : null,
-      concurrentScgBpm: scgResult.bpm !== null ? Math.round(scgResult.bpm) : null,
+      concurrentScgCandidateBpm: scgResult.bpm !== null ? Math.round(scgResult.bpm) : null,
+      concurrentScgAutocorrBpm: autocorr ? Math.round(autocorr.hz * 60) : null,
+      concurrentScgAutocorrR: autocorr ? Number(autocorr.correlation.toFixed(3)) : null,
       eventCount: (typeof pcgEvents !== 'undefined') ? pcgEvents.length : null,
+      // Timing correlation, computed on the shared live clock — the exact
+      // thing the earlier video-reconstruction analysis couldn't do
+      // precisely.
+      medianDeltaToS1Ms: timing ? (timing.medianDeltaToS1Ms !== null ? Math.round(timing.medianDeltaToS1Ms) : null) : null,
+      medianDeltaToS2Ms: timing ? (timing.medianDeltaToS2Ms !== null ? Math.round(timing.medianDeltaToS2Ms) : null) : null,
+      timingSampleCountS1: timing ? timing.sampleCountS1 : null,
+      timingSampleCountS2: timing ? timing.sampleCountS2 : null,
+      // Raw recent event timestamps (relative to session start, ms) for
+      // anyone who wants to redo this analysis independently later.
+      recentScgEventTimesMs: (typeof detectedEvents !== 'undefined') ? detectedEvents.slice(-10).map(e => Math.round(e.t)) : [],
+      recentPcgEventsClassified: (typeof pcgEvents !== 'undefined') ? pcgEvents.slice(-20).map(e => ({ t: Math.round(e.t), type: e.type || 'unknown' })) : [],
     };
   }
 
