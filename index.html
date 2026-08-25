@@ -2536,7 +2536,19 @@
         // hypothesis, not a generic harmonic guess.
         candidates.push({ label: 'PCG (÷2, S1+S2 hypothesis)', v: bpm / 2 });
       }
-      if (scgResult.bpm !== null) candidates.push({ label: 'SCG', v: scgResult.bpm });
+      if (scgResult.bpm !== null) candidates.push({ label: 'SCG (event detector)', v: scgResult.bpm });
+      // SCG autocorrelation is a separate, independently-computed SCG
+      // metric from the event detector — real-device testing (Aug 25)
+      // showed a session where the event detector was stuck on a gap
+      // (weak signal) the whole time, while autocorrelation kept producing
+      // usable readings that PCG/2 was actually converging with. The
+      // cross-check never noticed because it only looked at the event
+      // detector. Including both SCG metrics separately means a real
+      // convergence can't be missed just because one specific SCG method
+      // happened to be struggling.
+      if (lastKnownMetrics.autocorr && lastKnownMetrics.autocorr.correlation > 0.25) {
+        candidates.push({ label: 'SCG (autocorrelation)', v: lastKnownMetrics.autocorr.hz * 60 });
+      }
       if (ppgBpm !== null) candidates.push({ label: 'PPG', v: ppgBpm });
 
       if (candidates.length < 2) {
