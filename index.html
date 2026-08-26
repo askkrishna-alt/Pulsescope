@@ -2470,14 +2470,32 @@
       // longer than median -> this event is S1 (just finished a long
       // diastole). Needs a few events of history before it's meaningful.
       let type = 'unknown';
-      if (pcgEvents.length >= 4) {
+      // Detection gaps (contact loss, repositioning) are common in real
+      // recordings — real exported session data (Aug 25/26) showed
+      // multi-second gaps corrupting classification for several beats
+      // afterward, since a gap-inflated interval was pulling the rolling
+      // median far outside the true short/long range. A gap is defined
+      // here as anything much longer than a plausible diastole (>1200ms,
+      // i.e. below 50bpm-equivalent) — such an interval is excluded from
+      // the median calculation, and the event immediately after a gap is
+      // left 'unknown' rather than guessed, since there's no reliable
+      // basis to classify it yet.
+      const GAP_THRESHOLD_MS = 1200;
+      const thisInterval = t - lastEventT;
+      if (thisInterval > GAP_THRESHOLD_MS) {
+        type = 'unknown'; // first beat after a gap — not enough context yet
+      } else if (pcgEvents.length >= 4) {
         const recentIntervals = [];
-        for (let k = pcgEvents.length - 4; k < pcgEvents.length; k++) {
-          if (k > 0) recentIntervals.push(pcgEvents[k].t - pcgEvents[k - 1].t);
+        for (let k = pcgEvents.length - 1; k >= 0 && recentIntervals.length < 4; k--) {
+          if (k > 0) {
+            const iv = pcgEvents[k].t - pcgEvents[k - 1].t;
+            if (iv <= GAP_THRESHOLD_MS) recentIntervals.push(iv); // skip gaps when building the median
+          }
         }
-        const intervalMed = median(recentIntervals);
-        const thisInterval = t - lastEventT;
-        type = thisInterval < intervalMed ? 'S2' : 'S1';
+        if (recentIntervals.length >= 2) {
+          const intervalMed = median(recentIntervals);
+          type = thisInterval < intervalMed ? 'S2' : 'S1';
+        }
       }
       pcgEvents.push({ t, type });
       if (pcgEvents.length > 40) pcgEvents.shift();
